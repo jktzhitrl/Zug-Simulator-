@@ -19,7 +19,6 @@ namespace ZugSim.Game
         Texture2D softCircle;
         float dropAccum;
         float fpsSmoothed = 60f;
-        bool showPauseMenu;
         Vector2 careerScroll;
 
         static readonly string[] WeatherNames = { "Klar", "Bewölkt", "Regen", "Starkregen", "Nebel", "Sturm" };
@@ -215,7 +214,7 @@ namespace ZugSim.Game
 
             // --- Kamera/Pause (rechts oben)
             if (ui.Button(ui.RR(20, 20, 200, 70), CamName(g.Cam.Mode), new Color(0.2f, 0.3f, 0.45f, 0.9f), 28)) g.Cam.Cycle();
-            if (ui.Button(ui.RR(20, 100, 200, 70), "Pause", new Color(0.3f, 0.3f, 0.35f, 0.9f), 28)) { g.Paused = true; showPauseMenu = true; }
+            if (ui.Button(ui.RR(20, 100, 200, 70), "Pause", new Color(0.3f, 0.3f, 0.35f, 0.9f), 28)) g.Paused = true;
 
             // --- Weiche
             TrackFeature sw;
@@ -248,8 +247,7 @@ namespace ZugSim.Game
                 ty -= 70;
             }
 
-            if (showPauseMenu && g.Paused) DrawPause();
-            else if (!g.Paused) showPauseMenu = false;
+            if (g.Paused) DrawPause();
         }
 
         void DrawControls(SimulationWorld w)
@@ -343,9 +341,9 @@ namespace ZugSim.Game
             ui.Blocker(new Rect(0, 0, Screen.width, Screen.height));
             ui.Fill(new Rect(0, 0, Screen.width, Screen.height), new Color(0, 0, 0, 0.55f));
             ui.Label(ui.RC(0, 200, 800, 100), "PAUSE", 80, Color.white, TextAnchor.MiddleCenter, true);
-            if (ui.Button(ui.RC(0, 340, 520, 100), "Fortsetzen", UiToolkit.Good, 44)) { g.Paused = false; showPauseMenu = false; }
-            if (ui.Button(ui.RC(0, 460, 520, 100), "Neustart", UiToolkit.Accent, 44)) { g.RestartCurrent(); showPauseMenu = false; }
-            if (ui.Button(ui.RC(0, 580, 520, 100), "Hauptmenü", new Color(0.5f, 0.25f, 0.25f), 44)) { g.ToMenu(); showPauseMenu = false; }
+            if (ui.Button(ui.RC(0, 340, 520, 100), "Fortsetzen", UiToolkit.Good, 44)) g.Paused = false;
+            if (ui.Button(ui.RC(0, 460, 520, 100), "Neustart", UiToolkit.Accent, 44)) g.RestartCurrent();
+            if (ui.Button(ui.RC(0, 580, 520, 100), "Hauptmenü", new Color(0.5f, 0.25f, 0.25f), 44)) g.ToMenu();
         }
 
         // ================= Regentropfen auf der Scheibe =================
