@@ -67,3 +67,48 @@ public class MissionSimulationTests
         Assert.True(w.FinalScore.MissedStops >= 1);
     }
 }
+
+public class FreeRideTests
+{
+    [Fact]
+    public void FreeRideStartsWithOpenSignalsAndAutopilotReachesEndOfTrack()
+    {
+        var w = SimulationWorld.CreateFreeRide(TrainSpec.RegionalEmu(), 9.0, WeatherPreset.Overcast, 1.0);
+        Assert.All(w.Graph.Signals, s => Assert.NotEqual(ZugSim.Core.Track.SignalAspect.Halt, s.Aspect));
+        var driver = new AutoDriver();
+        double t = 0;
+        while (!w.IsAtTerminus && t < 3000)
+        {
+            driver.Update(w, SimulationWorld.FixedStep);
+            w.Step(SimulationWorld.FixedStep);
+            t += SimulationWorld.FixedStep;
+        }
+        Assert.True(w.IsAtTerminus, "Ende nicht erreicht, t=" + t);
+        Assert.Equal(0, w.Safety.Interventions);
+    }
+
+    [Fact]
+    public void HighSpeedTrainIsLimitedByTrackSpeed()
+    {
+        var w = SimulationWorld.CreateFreeRide(TrainSpec.HighSpeedEmu(), 12.0, WeatherPreset.Clear, 1.0);
+        var driver = new AutoDriver();
+        double vmax = 0;
+        for (int i = 0; i < 30000; i++)
+        {
+            driver.Update(w, SimulationWorld.FixedStep);
+            w.Step(SimulationWorld.FixedStep);
+            vmax = Math.Max(vmax, w.Train.SpeedKmh);
+        }
+        Assert.InRange(vmax, 100, 161);
+        Assert.Equal(0, w.Safety.Interventions);
+    }
+
+    [Fact]
+    public void CareerProgressSurvivesJsonRoundTripShape()
+    {
+        var p = new ZugSim.Core.Career.CareerProgress();
+        p.Submit("m1", new ScoreCard { Stars = 2, Total = 80 });
+        Assert.Single(p.Records);
+        Assert.Equal(2, p.TotalStars);
+    }
+}

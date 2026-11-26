@@ -52,7 +52,7 @@ namespace ZugSim.Core.Assist
                         if (f.Aspect == SignalAspect.Halt) cap = Math.Sqrt(2 * a * Math.Max(f.Distance - 20, 0));
                         else if (f.Aspect == SignalAspect.ProceedSlow) cap = Math.Sqrt(Math.Pow(f.SlowSpeedMs - CruiseMarginMs * 0.5, 2) + 2 * a * f.Distance);
                         break;
-                    case FeatureKind.EndOfTrack: cap = Math.Sqrt(2 * a * Math.Max(f.Distance - 12, 0)); break;
+                    case FeatureKind.EndOfTrack: cap = Math.Sqrt(2 * a * Math.Max(f.Distance - 30, 0)); break;
                 }
                 vdes = Math.Min(vdes, cap);
             }

@@ -20,6 +20,11 @@ namespace ZugSim.Core.Career
         public List<MissionRecord> Records = new List<MissionRecord>();
         public int SelectedTrain;
         public int QualityLevel = 1;
+        public bool AutoRoute = true;
+        public bool SifaEnabled = true;
+        public bool ShowFps;
+        public bool AdaptiveResolution = true;
+        public float Volume = 0.8f;
 
         public int TotalStars
         {

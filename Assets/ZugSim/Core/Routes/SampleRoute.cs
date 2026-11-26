@@ -71,7 +71,7 @@ namespace ZugSim.Core.Routes
             var sEnd = g.AddSignal(e3.Id, 4950, "Endhausen Einfahrt");
             g.UpdateSignals();
 
-            g.BuildGeometry(nHbf.Id, new Pose(0, 0, 0, 0, 0));
+            g.BuildGeometry(nHbf.Id, new TrackPose(0, 0, 0, 0, 0));
 
             return new RouteData
             {

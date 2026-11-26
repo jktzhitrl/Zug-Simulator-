@@ -3,11 +3,11 @@ using System.Collections.Generic;
 
 namespace ZugSim.Core.Track
 {
-    /// <summary>Pose im Raum. Heading: 0 = +Z (Norden), waechst Richtung +X (wie Unity-Yaw). Y = Hoehe.</summary>
-    public struct Pose
+    /// <summary>TrackPose im Raum. Heading: 0 = +Z (Norden), waechst Richtung +X (wie Unity-Yaw). Y = Hoehe.</summary>
+    public struct TrackPose
     {
         public double X, Y, Z, Heading, Pitch;
-        public Pose(double x, double y, double z, double heading, double pitch)
+        public TrackPose(double x, double y, double z, double heading, double pitch)
         { X = x; Y = y; Z = z; Heading = heading; Pitch = pitch; }
     }
 
@@ -18,17 +18,17 @@ namespace ZugSim.Core.Track
     public sealed class EdgeGeometry
     {
         public const double Step = 2.0;
-        readonly Pose[] samples;
+        readonly TrackPose[] samples;
         readonly double[] offsets;
         readonly double length;
 
-        EdgeGeometry(Pose[] samples, double[] offsets, double length)
+        EdgeGeometry(TrackPose[] samples, double[] offsets, double length)
         { this.samples = samples; this.offsets = offsets; this.length = length; }
 
-        public Pose Start { get { return samples[0]; } }
-        public Pose End { get { return samples[samples.Length - 1]; } }
+        public TrackPose Start { get { return samples[0]; } }
+        public TrackPose End { get { return samples[samples.Length - 1]; } }
 
-        public static EdgeGeometry Build(TrackEdge edge, Pose start)
+        public static EdgeGeometry Build(TrackEdge edge, TrackPose start)
         {
             // Stuetzstellen: regelmaessiges Raster plus alle Kurven-/Neigungsgrenzen (damit Integration exakt bleibt)
             var pos = new List<double>();
@@ -46,7 +46,7 @@ namespace ZugSim.Core.Track
             }
             if (offs[offs.Count - 1] < edge.Length - 1e-9) offs.Add(edge.Length);
 
-            var s = new Pose[offs.Count];
+            var s = new TrackPose[offs.Count];
             s[0] = start;
             s[0].Pitch = Math.Atan(edge.GradeAt(0) / 1000.0);
             double x = start.X, y = start.Y, z = start.Z, h = start.Heading;
@@ -63,12 +63,12 @@ namespace ZugSim.Core.Track
                 z += ds * Math.Cos(pitch) * Math.Cos(hm);
                 y += ds * Math.Sin(pitch);
                 h += dh;
-                s[i] = new Pose(x, y, z, h, pitch);
+                s[i] = new TrackPose(x, y, z, h, pitch);
             }
             return new EdgeGeometry(s, offs.ToArray(), edge.Length);
         }
 
-        public Pose Sample(double offset)
+        public TrackPose Sample(double offset)
         {
             offset = Units.Clamp(offset, 0.0, length);
             int i = Array.BinarySearch(offsets, offset);
@@ -76,8 +76,8 @@ namespace ZugSim.Core.Track
             i = ~i - 1;
             if (i >= samples.Length - 1) return samples[samples.Length - 1];
             double f = (offset - offsets[i]) / (offsets[i + 1] - offsets[i]);
-            Pose a = samples[i], b = samples[i + 1];
-            return new Pose(
+            TrackPose a = samples[i], b = samples[i + 1];
+            return new TrackPose(
                 a.X + (b.X - a.X) * f, a.Y + (b.Y - a.Y) * f, a.Z + (b.Z - a.Z) * f,
                 a.Heading + (b.Heading - a.Heading) * f, a.Pitch + (b.Pitch - a.Pitch) * f);
         }

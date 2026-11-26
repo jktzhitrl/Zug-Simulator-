@@ -186,9 +186,9 @@ namespace ZugSim.Core.Track
         }
 
         /// <summary>Berechnet die 3D-Geometrie aller Kanten ausgehend von einem Startknoten.</summary>
-        public void BuildGeometry(int rootNode, Pose rootPose)
+        public void BuildGeometry(int rootNode, TrackPose rootPose)
         {
-            var nodePose = new Pose?[Nodes.Count];
+            var nodePose = new TrackPose?[Nodes.Count];
             nodePose[rootNode] = rootPose;
             var queue = new Queue<int>();
             queue.Enqueue(rootNode);
@@ -210,6 +210,6 @@ namespace ZugSim.Core.Track
             }
         }
 
-        public Pose PoseAt(int edgeId, double offset) { return Edges[edgeId].Geometry.Sample(offset); }
+        public TrackPose PoseAt(int edgeId, double offset) { return Edges[edgeId].Geometry.Sample(offset); }
     }
 }

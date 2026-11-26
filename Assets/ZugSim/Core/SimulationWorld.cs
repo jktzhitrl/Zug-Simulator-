@@ -62,6 +62,8 @@ namespace ZugSim.Core
             w.Weather.AutoCycle = false;
             w.AutoRoute = false;
             w.Safety.SifaEnabled = false;
+            foreach (var sig in route.Graph.Signals) sig.ForcedHalt = false;
+            route.Graph.UpdateSignals();
             return w;
         }
 
@@ -109,6 +111,17 @@ namespace ZugSim.Core
         public double AvailableServiceDecel
         {
             get { return Math.Min(Spec.MaxServiceDecel, TrainPhysics.AvailableDecel(Weather.AdhesionFactor)); }
+        }
+
+        /// <summary>Zug steht am Ende der Strecke (Prellbock-Bereich, letzte 120 m).</summary>
+        public bool IsAtTerminus
+        {
+            get
+            {
+                if (Train.Speed > 0.05) return false;
+                if (Follower.AtEndOfTrack) return true;
+                return Graph.NextEdge(Follower.EdgeId) < 0 && Follower.Edge.Length - Follower.Offset < 120.0;
+            }
         }
 
         public bool IsFinished { get { return Service != null && Service.IsFinished; } }
