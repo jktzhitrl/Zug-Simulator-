@@ -114,7 +114,7 @@ namespace ZugSim.Core
                 if (drive > hold)
                 {
                     accel = (drive - hold) / effMass;
-                    newSpeed = accel * dt;
+                    newSpeed = Speed + accel * dt;
                 }
                 else
                 {

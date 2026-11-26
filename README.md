@@ -65,3 +65,7 @@ dotnet build tools/UnityCompileCheck   # prüft die Unity-Schicht gegen UnityEng
 ```
 
 Weiterführend: [Architektur & Physik](docs/ARCHITECTURE.md) · [Build-Anleitung](docs/BUILD.md) · [Eigene Assets einbinden](docs/ASSETS.md)
+
+## Browser-Demo
+
+`web/index.html` ist eine einzelne, eigenständige Seite (three.js von cdnjs, JS-Portierung der Simulation: Fahrphysik, Druckluftbremse, Signale, Zugsicherung, Fahrplan, Wetter, Tag/Nacht). Einfach im Browser öffnen. Vereinfacht: ein Gleis ohne Weichen/Sifa, Platzhaltergrafik.

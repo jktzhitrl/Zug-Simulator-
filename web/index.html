@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Zug-Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+[hidden]{display:none!important}
+/* Layout: Vollbild-3D mit Instrumentenleiste unten; Hebel links (Fahren) und rechts (Bremse), Fahrplan oben mittig. */
+:root {
+  --ink: #0b1116; --panel: rgba(9,14,19,.78); --line: rgba(255,255,255,.16); --fg: #eaf0f4; --muted: #94a5b2;
+  --amber: #ffb81c; --good: #4fd18b; --bad: #ff5a4d; --blue: #58a6ff;
+  --display: "Barlow Condensed", "Arial Narrow", Impact, sans-serif; --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--ink); color: var(--fg); font: 400 15px/1.35 var(--body); overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.hud { position: fixed; inset: 0; pointer-events: none; padding-block: 10px; padding-left: max(12px, env(safe-area-inset-left, 0px)); padding-right: max(12px, env(safe-area-inset-right, 0px)); }
+.hud > * { pointer-events: auto; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; backdrop-filter: blur(6px); }
+.tl { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); top: max(10px, env(safe-area-inset-top, 0px)); padding: 8px 12px; min-width: 190px; pointer-events: none; }
+.speed { font: 700 76px/0.9 var(--display); letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+.speed small { font: 600 18px var(--display); color: var(--muted); margin-left: 6px; letter-spacing: .08em; }
+.speed.over { color: var(--bad); }
+.kv { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.kv b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tc { position: absolute; left: 50%; transform: translateX(-50%); top: max(10px, env(safe-area-inset-top, 0px)); padding: 6px 14px; text-align: center; min-width: min(380px, 44vw); pointer-events: none; }
+.clock { font: 700 30px/1 var(--display); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.stopline { font-weight: 600; margin-top: 2px; }
+.sub { color: var(--muted); font-size: 13px; }
+.tr { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); top: max(10px, env(safe-area-inset-top, 0px)); display: grid; grid-template-columns: repeat(2, auto); gap: 6px; }
+button, .btn { font: 600 14px var(--body); color: var(--fg); background: rgba(24,34,44,.88); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; min-height: 44px; cursor: pointer; }
+button:hover { border-color: var(--amber); }
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+button.on { background: var(--amber); color: #1b1300; border-color: var(--amber); }
+button.good { background: #1d6b45; } button.bad { background: #7d2a22; }
+.sw { position: absolute; right: max(12px, env(safe-area-inset-right, 0px)); top: 112px; padding: 8px 10px; width: 210px; }
+.alert { position: absolute; left: 50%; transform: translateX(-50%); top: 112px; padding: 8px 14px; font-weight: 600; text-align: center; max-width: min(620px, 92vw); border-radius: 6px; pointer-events: none; }
+.alert.warn { background: rgba(220,120,10,.92); } .alert.eb { background: rgba(170,20,20,.94); pointer-events: auto; }
+.toasts { position: absolute; left: 50%; transform: translateX(-50%); bottom: 190px; display: flex; flex-direction: column-reverse; gap: 6px; align-items: center; width: min(560px, 92vw); pointer-events: none; }
+.toast { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--blue); border-radius: 6px; padding: 7px 12px; font-size: 14px; }
+.toast.ok { border-left-color: var(--good); } .toast.bad { border-left-color: var(--bad); }
+.deck { position: absolute; left: 0; right: 0; bottom: 0; height: 0; }
+.lever { position: absolute; bottom: max(14px, env(safe-area-inset-bottom, 0px)); width: 84px; height: min(36vh, 280px); touch-action: none; }
+.lever .track { position: absolute; inset: 0; background: rgba(8,12,16,.82); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.lever .fill { position: absolute; left: 0; right: 0; bottom: 0; }
+.lever .thumb { position: absolute; left: -6px; right: -6px; height: 34px; margin-top: -17px; border-radius: 6px; border: 2px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.lever .cap { position: absolute; left: -20px; right: -20px; bottom: -22px; text-align: center; font: 600 13px var(--display); letter-spacing: .12em; color: var(--muted); }
+.lever .tick { position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,.28); }
+.lever.l { left: max(26px, env(safe-area-inset-left, 0px)); } .lever.r { right: max(26px, env(safe-area-inset-right, 0px)); }
+#thr .fill { background: rgba(79,209,139,.55); } #thr .thumb { background: var(--good); }
+#brk .fill { background: rgba(255,90,77,.5); } #brk .thumb { background: var(--bad); }
+#brk .emg { position: absolute; left: 0; right: 0; top: 0; height: 5%; background: repeating-linear-gradient(45deg, #ff5a4d 0 6px, #2b0b08 6px 12px); opacity: .85; }
+.dash { position: absolute; left: 50%; transform: translateX(-50%); bottom: max(12px, env(safe-area-inset-bottom, 0px)); display: flex; gap: 12px; align-items: flex-end; padding: 10px 12px; }
+.gauges { display: flex; gap: 10px; align-items: center; }
+.bars { display: grid; gap: 4px; width: 92px; font-size: 12px; color: var(--muted); }
+.bar { height: 8px; background: rgba(255,255,255,.12); border-radius: 4px; overflow: hidden; } .bar i { display: block; height: 100%; }
+.btns { display: grid; grid-template-columns: repeat(2, minmax(88px, 1fr)); gap: 6px; }
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: radial-gradient(ellipse at 50% 30%, rgba(11,17,22,.55), rgba(11,17,22,.92)); z-index: 5; overflow: auto; touch-action: auto; }
+.card { width: min(720px, 100%); }
+h1 { font: 700 clamp(44px, 9vw, 84px)/.92 var(--display); letter-spacing: .02em; margin: 0 0 6px; text-transform: uppercase; }
+h1 em { font-style: normal; color: var(--amber); }
+.lead { color: #c8d4dd; max-width: 56ch; margin: 0 0 18px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+.big { padding: 14px 22px; font-size: 17px; }
+.help { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 18px; color: var(--muted); font-size: 13px; margin-top: 16px; }
+.help b { color: var(--fg); }
+.res { display: grid; gap: 10px; margin: 14px 0; }
+.res .line { display: grid; grid-template-columns: 150px 1fr 46px; gap: 10px; align-items: center; }
+.res .meter { height: 12px; border-radius: 6px; background: rgba(255,255,255,.14); overflow: hidden; } .res .meter i { display: block; height: 100%; }
+.stars { font: 700 64px/1 var(--display); color: var(--amber); letter-spacing: .1em; }
+.fps { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 4px; font-size: 11px; color: var(--muted); pointer-events: none; }
+@media (max-width: 760px) {
+  .speed { font-size: 56px; } .tl { min-width: 150px; padding: 6px 10px; } .tc { top: 96px; min-width: 0; width: 92vw; }
+  .tr { grid-template-columns: repeat(3, auto); } .tr button { padding: 8px 8px; font-size: 13px; }
+  .dash { gap: 6px; padding: 6px; } .gauges canvas { display: none; } .bars { width: 70px; }
+  .lever { width: 68px; height: 30vh; } .alert { top: 150px; } .sw { top: 56px; width: 170px; right: 8px; } .toasts { bottom: 170px; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<body>
+<canvas id="view" aria-label="3D-Ansicht"></canvas>
+<div class="hud" id="hud" hidden>
+  <div class="tl panel"><div class="speed" id="spd">0<small>km/h</small></div>
+    <div class="kv">zulässig <b id="perm">160</b> km/h · Neigung <b id="grade">0,0</b> ‰</div>
+    <div class="kv" id="next">–</div></div>
+  <div class="tc panel"><div class="clock" id="clock">08:00:00</div><div class="stopline" id="line1"></div><div class="sub" id="line2"></div></div>
+  <div class="tr">
+    <button id="bCam">Kamera: Cockpit</button><button id="bPause">Menü</button>
+    <button id="bWx">Wetter: Klar</button><button id="bTod">Tag</button>
+    <button id="bAuto">Autopilot</button><button id="bFps">FPS</button>
+  </div>
+  <div class="sw panel" id="sw" hidden><div><b id="swd">Weiche</b></div><div class="sub" id="sws"></div><button id="bSw" style="width:100%;margin-top:6px">Umstellen</button></div>
+  <div class="alert" id="alert" hidden></div>
+  <div class="toasts" id="toasts"></div>
+  <div class="deck">
+    <div class="lever l" id="thr"><div class="track"><div class="fill"></div></div><div class="thumb"></div><div class="cap">FAHREN</div></div>
+    <div class="lever r" id="brk"><div class="track"><div class="fill"></div><div class="emg"></div></div><div class="thumb"></div><div class="cap">BREMSE</div></div>
+    <div class="dash panel">
+      <div class="gauges"><canvas id="gauge" width="220" height="220" style="width:110px;height:110px"></canvas>
+        <div class="bars"><div>Hauptluftltg. <b id="hl">5,0</b> bar</div><div class="bar"><i id="hlb" style="background:#e8d44d"></i></div>
+          <div>Bremszyl. <b id="bz">0,0</b> bar</div><div class="bar"><i id="bzb" style="background:#58a6ff"></i></div>
+          <div>Türen <b id="door">zu</b></div><div class="bar"><i id="doorb" style="background:#4fd18b"></i></div></div></div>
+      <div class="btns"><button id="bHorn">Horn</button><button id="bDoor">Türen auf</button><button id="bRel" class="bad" hidden>Quittieren</button></div>
+    </div>
+  </div>
+  <div class="fps" id="fps"></div>
+</div>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1>Zug-<em>Simulator</em></h1>
+    <p class="lead">Browser-Demo des Tablet-Simulators: Regionalzug fahren mit Fahrphysik, Weichen, Signalen und Zugsicherung. Fahre den Fahrplan Musterstadt – Beispieldorf – Endhausen oder einfach frei.</p>
+    <div class="row"><button class="big on" id="goCareer">Fahrplan-Fahrt starten</button><button class="big" id="goFree">Freie Fahrt</button><button class="big" id="goDemo">Autopilot zuschauen</button></div>
+    <div class="help">
+      <div><b>Fahren</b> linken Hebel ziehen (8 Stufen)</div><div><b>Bremse</b> rechten Hebel; ganz oben = Schnellbremse</div>
+      <div><b>Tasten</b> W/S Fahren · A/D Bremse · Leertaste Schnellbremse · H Horn · T Türen · R quittieren</div>
+      <div><b>Kamera</b> Ziehen = umschauen/orbit, Mausrad/Pinch = Zoom</div>
+      <div><b>Halt</b> Türen nur im Stand am Bahnsteig; erst nach Abfahrzeit losfahren</div>
+      <div><b>Zugsicherung</b> Überschreitest du die Bremskurve, warnt das System und bremst zwangsweise</div>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="result" hidden><div class="card panel" style="padding:20px">
+  <div class="stars" id="rStars"></div><h1 style="font-size:44px" id="rTitle"></h1><div class="res" id="rBars"></div><div class="sub" id="rStops"></div>
+  <div class="row"><button class="big on" id="rAgain">Nochmal</button><button class="big" id="rMenu">Menü</button></div></div></div>
+<div class="overlay" id="nogl" hidden><div class="card panel" style="padding:20px">WebGL ist in diesem Browser nicht verfügbar. Bitte einen aktuellen Browser mit Hardwarebeschleunigung verwenden.</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*SIM-START*/
+const SIM = (() => {
+  const G = 9.81, kmh = v => v / 3.6, ms2kmh = v => v * 3.6;
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v, clamp01 = v => clamp(v, 0, 1);
+  const SPEC = { mass: 190000, pax: 15000, len: 105, cars: 4, vmax: kmh(160), F: 190000, P: 2.4e6, driven: .5, rot: 1.06,
+    A: 4000, B: 60, C: 6.5, svc: 1.0, emg: 1.2, apply: 1.5, release: 3.0, eapply: .8, notches: 8 };
+  const ROUTE = {
+    length: 5500, base: kmh(160),
+    grades: [[0, 0], [1200, 12], [2000, -10], [3000, 0], [4200, -6], [4800, 0]],
+    curves: [[900, 1500, 700], [3200, 3900, -800], [4300, 4700, 1000]],
+    zones: [[0, 600, 80], [900, 1500, 120], [2300, 2900, 80], [4800, 5400, 80]],
+    signals: [{ id: 0, name: 'Ausfahrt Musterstadt', s: 320, forced: true }, { id: 1, name: 'Einfahrt Beispieldorf', s: 2450, forced: false }, { id: 2, name: 'Einfahrt Endhausen', s: 5000, forced: false }],
+    stops: [
+      { name: 'Musterstadt Hbf', s: 150, origin: true, dep: 28800, platform: '3' },
+      { name: 'Beispieldorf', s: 2600, arr: 28800 + 170, dep: 28800 + 170 + 60, dwell: 25, platform: '2' },
+      { name: 'Endhausen', s: 5300, arr: 28800 + 170 + 60 + 215, dwell: 12, terminal: true, platform: '1' },
+    ],
+  };
+  const gradeAt = s => { let g = 0; for (const [a, v] of ROUTE.grades) if (a <= s) g = v; return g; };
+  const radiusAt = s => { for (const [a, b, r] of ROUTE.curves) if (s >= a && s < b) return r; return 0; };
+  const limitAt = s => { let l = ROUTE.base; for (const [a, b, k] of ROUTE.zones) if (s >= a && s < b) l = Math.min(l, kmh(k)); return l; };
+  const WEATHER = {
+    clear: { name: 'Klar', rain: 0, fog: 0, slip: 0, cloud: .1 }, rain: { name: 'Regen', rain: .6, fog: .1, slip: .2, cloud: .85 },
+    fog: { name: 'Nebel', rain: 0, fog: .85, slip: 0, cloud: .6 }, storm: { name: 'Sturm', rain: 1, fog: .25, slip: .45, cloud: 1 },
+  };
+  const adhesion = w => clamp((1 - .45 * w.rain) * (1 - .45 * w.slip) * (1 - .08 * w.fog), .2, 1);
+  const visibility = w => Math.max(50, Math.min(12000 * (1 - .55 * w.rain), 60 + 11940 * Math.pow(1 - w.fog, 3)));
+  const availDecel = adh => Math.min(SPEC.svc, .95 * .14 * adh * G);
+
+  function create(opts = {}) {
+    const w = {
+      clock: 28680, s: ROUTE.stops[0].s, v: 0, a: 0, fill: 0, odo: 0, pax: SPEC.pax, throttle: 0, brake: .75,
+      doors: 'closed', doorP: 0, doorOpenT: 0, weather: { rain: 0, fog: 0, slip: 0, cloud: .1 }, tractionCut: false,
+      signals: ROUTE.signals.map(s => ({ ...s, aspect: s.forced ? 'halt' : 'go' })), horn: false,
+      safety: { state: 'ok', reason: '', eb: false, canRelease: false, standT: 0, warnT: 0, interventions: 0, spad: 0, permitted: SPEC.vmax, targetD: Infinity },
+      svc: { i: 0, phase: 'platform', boarded: true, ready: false, results: [], early: 0, events: [], done: false },
+      comfort: { sm: 0, prev: 0, t: 0, bad: 0, jerk: 0 }, end: false, free: !!opts.free,
+    };
+    if (w.free) { w.signals.forEach(s => { s.forced = false; s.aspect = 'go'; }); w.clock = 12 * 3600; w.svc.done = false; }
+    w.ev = (kind, text) => w.svc.events.push({ kind, text, t: w.clock });
+    return w;
+  }
+
+  function setWeather(w, target, dt) {
+    for (const k of ['rain', 'fog', 'slip', 'cloud']) w.weather[k] += (target[k] - w.weather[k]) * Math.min(1, dt / 8);
+  }
+
+  function brakeUpdate(w, dt, lever, emergency) {
+    const ratio = SPEC.svc / SPEC.emg;
+    const target = emergency ? 1 : clamp01(lever) * ratio;
+    const rate = emergency ? 1 / SPEC.eapply : target > w.fill ? ratio / SPEC.apply : 1 / SPEC.release;
+    const d = target - w.fill, m = rate * dt;
+    w.fill += Math.abs(d) <= m ? d : Math.sign(d) * m;
+  }
+  const mainPipe = fill => { const r = SPEC.svc / SPEC.emg; return fill <= r ? 5 - 1.5 * fill / r : 3.5 * (1 - (fill - r) / (1 - r)); };
+
+  function physics(w, dt) {
+    const adh = adhesion(w.weather), mu = .3 * adh, muB = .14 * adh;
+    const m = SPEC.mass + w.pax, lever = w.brake, emg = lever >= .97 || w.safety.eb;
+    brakeUpdate(w, dt, Math.min(1, lever / .85), emg);
+    // Tueren
+    if (w.doors === 'opening') { w.doorP = Math.min(1, w.doorP + dt / 3); if (w.doorP >= 1) { w.doors = 'open'; w.doorOpenT = 0; } }
+    else if (w.doors === 'closing') { w.doorP = Math.max(0, w.doorP - dt / 4); if (w.doorP <= 0) w.doors = 'closed'; }
+    else if (w.doors === 'open') w.doorOpenT += dt;
+    w.tractionCut = w.doors !== 'closed' || emg || w.fill > .03 || w.v >= SPEC.vmax;
+    let tr = 0;
+    if (!w.tractionCut && w.throttle > 0) {
+      const fp = w.v > .5 ? SPEC.P / w.v : 1e12;
+      tr = Math.min(w.throttle * Math.min(SPEC.F, fp), mu * SPEC.driven * m * G);
+    }
+    const r = Math.abs(radiusAt(w.s));
+    const wk = r <= 0 ? 0 : (r >= 300 ? 650 / (r - 55) : 500 / Math.max(r - 30, 20));
+    const gradeF = m * G * gradeAt(w.s) / 1000, curveF = m * G * wk / 1000;
+    const brakeF = Math.min(w.fill * m * SPEC.emg, .95 * muB * m * G);
+    const drive = tr - gradeF - curveF, eff = m * SPEC.rot;
+    let nv, a;
+    if (w.v <= .01) { const hold = SPEC.A + brakeF; if (drive > hold) { a = (drive - hold) / eff; nv = w.v + a * dt; } else { a = 0; nv = 0; } }
+    else {
+      const run = SPEC.A + SPEC.B * w.v + SPEC.C * w.v * w.v;
+      a = (drive - run - brakeF) / eff; nv = w.v + a * dt;
+      if (nv <= 0) { nv = 0; a = -w.v / dt; }
+    }
+    const ds = .5 * (w.v + nv) * dt;
+    w.s += ds; w.odo += ds; w.v = nv; w.a = a; w.tr = tr; w.brakeF = brakeF;
+    if (w.s >= ROUTE.length) { w.s = ROUTE.length; if (w.v > 1.5 && !w.end) { w.safety.interventions++; w.ev('eb', 'Gleisende überfahren'); } w.v = 0; w.a = 0; w.end = true; }
+  }
+
+  function permittedSpeed(w) {
+    const a = Math.min(.7, .9 * availDecel(adhesion(w.weather)));
+    let p = limitAt(w.s);
+    for (let k = 1; k <= 4; k++) p = Math.min(p, limitAt(w.s - SPEC.len * k / 4));
+    let target = Infinity, lastL = limitAt(w.s);
+    for (let d = 10; d <= 2500; d += 10) {
+      const s = w.s + d; if (s > ROUTE.length) break;
+      const l = limitAt(s);
+      if (l < lastL) p = Math.min(p, Math.sqrt(l * l + 2 * a * d));
+      lastL = l;
+    }
+    for (const sg of w.signals) if (sg.s > w.s && sg.aspect === 'halt') {
+      const d = sg.s - w.s; if (d <= 2500) { p = Math.min(p, Math.max(1.5, Math.sqrt(2 * a * Math.max(d - 8, 0)))); target = Math.min(target, d); }
+    }
+    const de = ROUTE.length - w.s;
+    if (de <= 2500) { p = Math.min(p, Math.max(1, Math.sqrt(2 * a * Math.max(de - 4, 0)))); target = Math.min(target, de); }
+    w.safety.targetD = target;
+    return p;
+  }
+
+  function safety(w, dt, prevS) {
+    const sf = w.safety;
+    for (const sg of w.signals) if (sg.s > prevS && sg.s <= w.s && sg.aspect === 'halt') { sf.spad++; trigger(w, 'Haltsignal überfahren'); }
+    sf.permitted = permittedSpeed(w);
+    if (sf.eb) { if (w.v < .05) { sf.standT += dt; if (sf.standT > 2) sf.canRelease = true; } return; }
+    const ex = w.v - sf.permitted;
+    if (ex > 2) trigger(w, 'Überwachungskurve überschritten');
+    else if (ex > .3) { sf.state = 'warn'; sf.warnT += dt; if (sf.warnT > 6) trigger(w, 'Warnung nicht beachtet'); }
+    else { if (sf.state === 'warn') sf.state = 'ok'; sf.warnT = Math.max(0, sf.warnT - dt); }
+  }
+  function trigger(w, reason) {
+    const sf = w.safety; if (sf.eb) return;
+    sf.interventions++; sf.eb = true; sf.canRelease = false; sf.standT = 0; sf.state = 'eb'; sf.reason = reason; w.ev('eb', 'Zwangsbremsung: ' + reason);
+  }
+  function release(w) {
+    const sf = w.safety; if (!sf.eb || !sf.canRelease) return false;
+    sf.eb = false; sf.canRelease = false; sf.state = 'ok'; sf.warnT = 0; w.brake = .75; w.throttle = 0; return true;
+  }
+
+  const punctual = d => d > 30 ? clamp(100 - (d - 30) / 270 * 100, 0, 100) : d < -30 ? clamp(100 - (-d - 30) * .5, 0, 100) : 100;
+  const accurate = e => { const x = e > 0 ? e * 2 : -e; return x <= 2 ? 100 : clamp(100 - (x - 2) / 28 * 100, 0, 100); };
+
+  function service(w, dt) {
+    if (w.free) return;
+    const sv = w.svc, st = ROUTE.stops[sv.i]; if (!st || sv.done) return;
+    if (sv.phase === 'approach') {
+      const err = w.s - st.s;
+      if (err > 15) { sv.results.push({ name: st.name, missed: true }); w.ev('bad', 'Halt verpasst: ' + st.name); next(w); return; }
+      if (w.v < .1 && err >= -60) {
+        const delay = w.clock - st.arr;
+        sv.results.push({ name: st.name, delay, err, p: punctual(delay), a: accurate(err), early: false });
+        sv.phase = 'platform'; sv.boarded = false; sv.ready = false;
+        w.ev('ok', `${st.name}: Ankunft ${delay >= 0 ? '+' : ''}${Math.round(delay)} s, Halteabweichung ${err.toFixed(1)} m`);
+      }
+      return;
+    }
+    if (!sv.boarded && w.doors === 'open' && w.doorOpenT >= st.dwell) {
+      sv.boarded = true; w.pax = st.terminal ? 0 : 14000; w.ev('info', 'Fahrgastwechsel abgeschlossen');
+      if (st.terminal) { sv.done = true; w.ev('ok', 'Endstation erreicht'); return; }
+    }
+    const ready = sv.boarded && w.clock >= st.dep;
+    if (ready && !sv.ready) w.ev('ok', 'Abfahrbereit');
+    sv.ready = ready;
+    if (w.v > .5 && w.doors === 'closed') {
+      if (sv.boarded && w.clock < st.dep - 5) { sv.early++; const r = sv.results[sv.results.length - 1]; if (r) r.early = true; w.ev('bad', 'Zu früh abgefahren!'); }
+      w.ev('info', 'Abfahrt ' + st.name); sv.i++; sv.phase = 'approach'; sv.ready = false;
+    }
+  }
+  function next(w) { const sv = w.svc; sv.i++; if (sv.i >= ROUTE.stops.length) sv.done = true; else sv.phase = 'approach'; }
+
+  function score(w) {
+    const sv = w.svc; let p = 0, a = 0, n = 0, missed = 0;
+    for (const r of sv.results) { n++; if (r.missed) { missed++; continue; } p += Math.max(0, r.p - (r.early ? 40 : 0)); a += r.a; }
+    const P = n ? p / n : 100, A = n ? a / n : 100;
+    const c = w.comfort, avg = c.t > 1 ? c.bad / c.t : 0, C = clamp(100 * (1 - avg / .25), 0, 100);
+    const S = clamp(100 - 25 * w.safety.interventions - 50 * w.safety.spad, 0, 100);
+    const total = .4 * P + .25 * A + .2 * C + .15 * S, pass = w.safety.spad === 0 && missed === 0 && total >= 55;
+    return { P, A, C, S, total, stars: !pass ? 0 : total >= 90 ? 3 : total >= 75 ? 2 : 1, pass, missed };
+  }
+
+  function update(w, dt, targetWeather) {
+    w.clock += dt;
+    if (targetWeather) setWeather(w, targetWeather, dt);
+    if (!w.free) for (const sg of w.signals) { if (sg.id === 0) sg.forced = w.clock < ROUTE.stops[0].dep - 15; sg.aspect = sg.forced ? 'halt' : 'go'; }
+    let left = dt; const prevS = w.s;
+    while (left > 1e-9) { const h = Math.min(left, .02); physics(w, h); left -= h; }
+    safety(w, dt, prevS);
+    service(w, dt);
+    const c = w.comfort, k = 1 - Math.exp(-dt / .4); c.sm += (w.a - c.sm) * k; c.jerk = (c.sm - c.prev) / dt; c.prev = c.sm;
+    if (!(w.v < .3 && Math.abs(w.a) < .05)) { c.t += dt; c.bad += dt * (Math.max(0, Math.abs(c.jerk) - .8) + 2 * Math.max(0, Math.abs(c.sm) - 1.2)); }
+  }
+
+  function openDoors(w) { if (w.v < .3 && (w.free || w.svc.phase === 'platform')) { if (w.doors === 'closed' || w.doors === 'closing') w.doors = 'opening'; return true; } return false; }
+  function closeDoors(w) { if (w.doors === 'open' || w.doors === 'opening') w.doors = 'closing'; }
+
+  /* Autopilot (Demo): fährt den Fahrplan komfortabel ab */
+  function autopilot(w, dt, st) {
+    st = st || (st = { thr: 0, brk: 0 });
+    const sv = w.svc; let hold = false;
+    if (w.safety.eb) release(w);
+    if (!w.free && sv.phase === 'platform') {
+      hold = true;
+      if (!sv.boarded) openDoors(w); else if (w.doors !== 'closed') closeDoors(w); else if (sv.ready) hold = false;
+    }
+    if (sv.done && !w.free) hold = true;
+    let vd = limitAt(w.s) - 1.5; for (let k = 1; k <= 4; k++) vd = Math.min(vd, limitAt(w.s - SPEC.len * k / 4) - 1.5);
+    const a = Math.min(.5, .6 * availDecel(adhesion(w.weather)));
+    let lastL = limitAt(w.s);
+    for (let d = 10; d <= 2500 && w.s + d <= ROUTE.length; d += 10) { const l = limitAt(w.s + d); if (l < lastL) vd = Math.min(vd, Math.sqrt(Math.pow(l - .75, 2) + 2 * a * d)); lastL = l; }
+    for (const sg of w.signals) if (sg.s > w.s && sg.aspect === 'halt') vd = Math.min(vd, Math.sqrt(2 * a * Math.max(sg.s - w.s - 20, 0)));
+    vd = Math.min(vd, Math.sqrt(2 * a * Math.max(ROUTE.length - w.s - 30, 0)));
+    let ff = 0, sd = Infinity;
+    if (!w.free && sv.phase === 'approach' && ROUTE.stops[sv.i]) {
+      sd = ROUTE.stops[sv.i].s - w.s; const d = Math.max(sd, 0);
+      vd = Math.min(vd, Math.sqrt(2 * a * d));
+      if (w.v > .4 && w.v >= .8 * Math.sqrt(2 * a * d)) ff = w.v * w.v / (2 * Math.max(d, 1)) / availDecel(adhesion(w.weather));
+    }
+    if (hold) vd = 0;
+    const err = vd - w.v; let wt = 0, wb = 0;
+    if (hold && w.v < .2) wb = .4; else if (err > .3 && !(ff > .25)) wt = clamp01(err * .35);
+    if (err < -.2) wb = Math.max(wb, clamp01(-err * .35));
+    if (ff > .05 && w.v > .4) wb = Math.max(wb, clamp01(ff * 1.08));
+    if (sd < 3 && w.v < .8) wb = Math.max(wb, .5);
+    if (wb > .02) wt = 0;
+    const slew = (c, t, m) => Math.abs(t - c) <= m ? t : c + Math.sign(t - c) * m;
+    st.thr = slew(st.thr, wt, .5 * dt); st.brk = slew(st.brk, wb, .8 * dt);
+    w.throttle = Math.round(st.thr * SPEC.notches) / SPEC.notches; w.brake = st.brk * .85;
+    return st;
+  }
+
+  return { SPEC, ROUTE, WEATHER, create, update, physics, openDoors, closeDoors, release, score, autopilot, gradeAt, radiusAt, limitAt, adhesion, visibility, mainPipe, availDecel, ms2kmh, kmh, clamp };
+})();
+/*SIM-END*/
+
+</script>
+<script>
+(() => {
+  const S = SIM, R = S.ROUTE, SPEC = S.SPEC, $ = id => document.getElementById(id);
+  const fmtClock = t => { t = Math.floor(((t % 86400) + 86400) % 86400); return [t / 3600 | 0, (t / 60 | 0) % 60, t % 60].map(n => String(n).padStart(2, '0')).join(':'); };
+  const nf = (v, d = 1) => v.toFixed(d).replace('.', ',');
+  if (typeof THREE === 'undefined') { $('nogl').hidden = false; $('menu').hidden = true; return; }
+
+  /* ---------- Gleisgeometrie (2-m-Raster) ---------- */
+  const STEP = 2, N = Math.ceil(R.length / STEP) + 1, P = [];
+  { let x = 0, y = 0, z = 0, h = 0; P.push({ x, y, z, h, p: 0 });
+    for (let i = 1; i < N; i++) { const s0 = (i - 1) * STEP, s1 = Math.min(i * STEP, R.length), ds = s1 - s0, mid = (s0 + s1) / 2;
+      const r = S.radiusAt(mid), dh = r ? ds / r : 0, pit = Math.atan(S.gradeAt(mid) / 1000), hm = h + dh / 2;
+      x += ds * Math.cos(pit) * Math.sin(hm); z += ds * Math.cos(pit) * Math.cos(hm); y += ds * Math.sin(pit); h += dh; P.push({ x, y, z, h, p: pit }); } }
+  const poseAt = s => { s = S.clamp(s, 0, R.length); const t = s / STEP, i = Math.min(Math.floor(t), N - 2), f = t - i, a = P[i], b = P[i + 1];
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, z: a.z + (b.z - a.z) * f, h: a.h + (b.h - a.h) * f, p: a.p + (b.p - a.p) * f }; };
+  const sc = (q, off = 0, up = 0) => new THREE.Vector3(-(q.x + Math.cos(q.h) * off), q.y + up, q.z - Math.sin(q.h) * off); // x gespiegelt (Rechtssystem)
+  const dirAt = q => new THREE.Vector3(-Math.sin(q.h) * Math.cos(q.p), Math.sin(q.p), Math.cos(q.h) * Math.cos(q.p));
+
+  /* ---------- Szene ---------- */
+  const canvas = $('view');
+  let renderer;
+  try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' }); } catch (e) { $('nogl').hidden = false; return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const scene = new THREE.Scene();
+  const cam = new THREE.PerspectiveCamera(65, 1, .1, 6000);
+  const hemi = new THREE.HemisphereLight(0xbcd4ff, 0x3a4a30, .8), sun = new THREE.DirectionalLight(0xfff2dd, 1);
+  scene.add(hemi, sun, sun.target);
+  scene.fog = new THREE.FogExp2(0xaec6e0, .0003);
+
+  const mat = (c, o = {}) => new THREE.MeshLambertMaterial(Object.assign({ color: c, side: THREE.DoubleSide }, o));
+  const tex = (w, h, fn, rep) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); fn(g, w, h);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4; if (rep) t.repeat.set(rep[0], rep[1]); return t; };
+  const rnd = (() => { let a = 7; return () => (a = (a * 1664525 + 1013904223) >>> 0) / 4294967296; })();
+  const ballastTex = tex(128, 128, (g, w, h) => { g.fillStyle = '#5b5852'; g.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { const v = 70 + rnd() * 50 | 0; g.fillStyle = `rgb(${v},${v - 2},${v - 6})`; g.fillRect(rnd() * w, rnd() * h, 3, 3); }
+    g.fillStyle = '#7a756c'; for (let k = 0; k < 2; k++) g.fillRect(w * .16, h * (k * .5 + .02), w * .68, h * .2); });
+  const grassTex = tex(128, 128, (g, w, h) => { g.fillStyle = '#3e6b34'; g.fillRect(0, 0, w, h); for (let i = 0; i < 1600; i++) { const v = rnd(); g.fillStyle = v < .5 ? '#47763a' : '#35602d'; g.fillRect(rnd() * w, rnd() * h, 2, 3); } });
+
+  function ribbon(s0, s1, offA, yA, offB, yB, material, uv) {
+    const pos = [], uvs = [], idx = []; let k = 0;
+    for (let s = s0; s <= s1 + 1e-6; s += STEP) { const q = poseAt(Math.min(s, s1)), a = sc(q, offA, yA), b = sc(q, offB, yB);
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z); const v = uv ? uv(s) : s / 2.4; uvs.push(0, v, 1, v);
+      if (k > 0) { const i = (k - 1) * 2; idx.push(i, i + 1, i + 2, i + 1, i + 3, i + 2); } k++; }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); g.setIndex(idx); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, material); scene.add(m); return m;
+  }
+  const world = new THREE.Group(); scene.add(world);
+  const ballastMat = mat(0xffffff, { map: ballastTex }), railMat = mat(0x9aa0a8), grassMat = mat(0xffffff, { map: grassTex }), platMat = mat(0xb4b6ba);
+  ribbon(0, R.length, -2.7, -.55, -1.85, -.05, ballastMat); ribbon(0, R.length, -1.85, -.05, 1.85, -.05, ballastMat); ribbon(0, R.length, 1.85, -.05, 2.7, -.55, ballastMat);
+  for (const o of [-.7175, .7175]) { ribbon(0, R.length, o - .05, .16, o + .05, .16, railMat); ribbon(0, R.length, o - .05, -.05, o - .05, .16, railMat); ribbon(0, R.length, o + .05, -.05, o + .05, .16, railMat); }
+  ribbon(0, R.length, -160, -.7, -2.7, -.6, grassMat, s => 0); // Gelaende mit Welt-UV nachgeruestet unten
+  grassTex.repeat.set(1, 1);
+  scene.children.slice(-1)[0].geometry.setAttribute('uv', (() => { const a = [], g = scene.children.slice(-1)[0].geometry.attributes.position; for (let i = 0; i < g.count; i++) a.push(g.getX(i) / 14, g.getZ(i) / 14); return new THREE.Float32BufferAttribute(a, 2); })());
+  { const m = ribbon(0, R.length, 2.7, -.6, 160, -.7, grassMat); const g = m.geometry.attributes.position, a = []; for (let i = 0; i < g.count; i++) a.push(g.getX(i) / 14, g.getZ(i) / 14); m.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(a, 2)); }
+
+  // Masten und Fahrdraht
+  { const n = Math.floor(R.length / 60), mast = new THREE.InstancedMesh(new THREE.BoxGeometry(.3, 6.4, .3), mat(0x7b8088), n), d = new THREE.Object3D();
+    for (let i = 0; i < n; i++) { const q = poseAt(i * 60 + 30), p = sc(q, -3.4, 3.2); d.position.copy(p); d.rotation.set(0, 0, 0); d.updateMatrix(); mast.setMatrixAt(i, d.matrix); }
+    scene.add(mast);
+    const pts = []; for (let s = 0; s <= R.length; s += 6) pts.push(sc(poseAt(s), 0, 5.5)); scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x222222 }))); }
+  // Baeume
+  { const n = 420, cone = new THREE.InstancedMesh(new THREE.ConeGeometry(2.4, 9, 6), mat(0x2d5a30), n), trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(.3, .4, 3, 5), mat(0x5a3d26), n), d = new THREE.Object3D();
+    for (let i = 0; i < n; i++) { const q = poseAt(rnd() * R.length), side = rnd() < .5 ? -1 : 1, p = sc(q, side * (16 + rnd() * 110), -.6), k = .7 + rnd() * .9;
+      d.position.set(p.x, p.y + 1.5 * k, p.z); d.scale.set(k, k, k); d.updateMatrix(); trunk.setMatrixAt(i, d.matrix);
+      d.position.set(p.x, p.y + 7 * k, p.z); d.updateMatrix(); cone.setMatrixAt(i, d.matrix); }
+    scene.add(cone, trunk); }
+  // Bahnhoefe
+  function label(text) { const c = document.createElement('canvas'); c.width = 512; c.height = 96; const g = c.getContext('2d'); g.fillStyle = '#0b3d91'; g.fillRect(0, 0, 512, 96); g.fillStyle = '#fff'; g.font = '700 54px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 256, 50);
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(7, 1.3), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), side: THREE.DoubleSide })); return sp; }
+  for (const st of R.stops) {
+    ribbon(st.s - 120, st.s + 45, 2.3, .76, 6.3, .76, platMat); ribbon(st.s - 120, st.s + 45, 2.3, -.05, 2.3, .76, platMat); ribbon(st.s - 120, st.s + 45, 2.3, .77, 2.8, .77, mat(0xe3c11b));
+    const q = poseAt(st.s - 40); const roof = new THREE.Mesh(new THREE.BoxGeometry(3.6, .2, 70), mat(0x3a4650)); roof.position.copy(sc(q, 4.6, 4.2)); roof.rotation.y = Math.atan2(-Math.sin(q.h), Math.cos(q.h)) * 0 + (-q.h) ; scene.add(roof);
+    const lb = label(st.name); lb.position.copy(sc(q, 4.2, 2.6)); lb.rotation.y = -q.h + Math.PI / 2 * 0; lb.lookAt(lb.position.clone().add(new THREE.Vector3(-1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), -q.h))); scene.add(lb);
+    const m = poseAt(st.s), post = new THREE.Mesh(new THREE.BoxGeometry(.12, 1.6, .12), mat(0x333333)); post.position.copy(sc(m, 2.7, 1.5)); scene.add(post);
+    const bd = new THREE.Mesh(new THREE.BoxGeometry(.7, .6, .06), new THREE.MeshBasicMaterial({ color: 0xffd21c })); bd.position.copy(sc(m, 2.7, 2.1)); bd.rotation.y = -m.h; scene.add(bd);
+  }
+  // Signale
+  const sigViews = R.signals.map(sg => { const q = poseAt(sg.s), g = new THREE.Group(); g.position.copy(sc(q, 3.1, 0)); g.rotation.y = -q.h + Math.PI;
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(.2, 5, .2), mat(0x3a3d42)); pole.position.set(0, 2.5, 0); g.add(pole);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(.8, 1.5, .3), mat(0x0a0a0a)); head.position.set(0, 5.1, 0); g.add(head);
+    const red = new THREE.Mesh(new THREE.SphereGeometry(.22, 12, 8), new THREE.MeshBasicMaterial({ color: 0x300000 })), grn = new THREE.Mesh(new THREE.SphereGeometry(.22, 12, 8), new THREE.MeshBasicMaterial({ color: 0x002a08 }));
+    red.position.set(0, 5.45, .18); grn.position.set(0, 4.75, .18); g.add(red, grn); scene.add(g); return { red, grn }; });
+
+  /* ---------- Zug ---------- */
+  const CAR = SPEC.len / SPEC.cars, cars = [];
+  for (let i = 0; i < SPEC.cars; i++) {
+    const g = new THREE.Group(), L = CAR - .5;
+    const box = (w, h, l, c, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, l), mat(c)); m.position.set(x, y, z); g.add(m); return m; };
+    const shell = new THREE.Group(); g.add(shell); const add = (m) => { g.remove(m); shell.add(m); };
+    add(box(2.9, 1.4, L, 0xb3141a, 0, 1.35, 0)); add(box(2.9, 1.5, L, 0xeceff2, 0, 2.8, 0)); add(box(2.4, .25, L - .6, 0x30343a, 0, 3.65, 0));
+    add(box(2.95, .85, L - 3, 0x0d1822, 0, 2.85, 0)); add(box(2.7, .5, L - .2, 0x1a1d21, 0, .75, 0));
+    box(2.5, .9, 2.8, 0x15171a, 0, .55, -9); box(2.5, .9, 2.8, 0x15171a, 0, .55, 9);
+    if (i === 1) { box(.1, .8, .1, 0x222222, 0, 4.1, 0); box(1.8, .05, .1, 0x222222, 0, 4.55, 0); }
+    if (i === 0) { const gl = box(2.4, 1.0, .05, 0x0d1822, 0, 2.75, L / 2 + .02); const lamp = new THREE.MeshBasicMaterial({ color: 0xfff6d8 });
+      for (const x of [-1, 1]) { const l = new THREE.Mesh(new THREE.BoxGeometry(.3, .2, .05), lamp); l.position.set(x, 1.25, L / 2 + .04); g.add(l); }
+      add(gl); g.userData.head = true; }
+    scene.add(g); cars.push({ g, shell });
+  }
+  const headLight = new THREE.SpotLight(0xfff0d0, 0, 420, .6, .5, 1); headLight.target.position.set(0, 0, 60); cars[0].g.add(headLight, headLight.target); headLight.position.set(0, 2.2, 14);
+
+  /* ---------- Wetter-Visuals ---------- */
+  const RAIN_N = 2600, rainPos = new Float32Array(RAIN_N * 6), rainOff = Array.from({ length: RAIN_N }, () => [rnd() * 60, rnd() * 24, rnd() * 60]);
+  const rainGeo = new THREE.BufferGeometry(); rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+  const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({ color: 0xbfd2e6, transparent: true, opacity: .45 })); rain.frustumCulled = false; scene.add(rain);
+
+  /* ---------- Zustand ---------- */
+  let W = null, mode = 'career', camMode = 0, auto = false, ap = null, running = false, wxKey = 'clear', todIdx = 0, showFps = false, hornHeld = false;
+  const TODS = [{ n: 'Morgen', h: 8 }, { n: 'Mittag', h: 12 }, { n: 'Abend', h: 18.4 }, { n: 'Nacht', h: 23 }];
+  let look = { yaw: 0, pitch: 0, idle: 0 }, orbit = { yaw: .55, pitch: .25, dist: 40 }, trackside = null, toasts = [];
+  const WX = ['clear', 'rain', 'fog', 'storm'];
+
+  function start(m, demo) {
+    mode = m; W = S.create({ free: m === 'free' }); ap = null; auto = !!demo; wxKey = 'clear'; running = true; camMode = demo ? 1 : 0;
+    if (m === 'free') W.brake = .75; look = { yaw: 0, pitch: 0, idle: 0 }; trackside = null;
+    $('menu').hidden = true; $('result').hidden = true; $('hud').hidden = false; syncButtons(); if (demo) toast('Autopilot fährt den Fahrplan', 'info');
+    else if (m === 'career') toast('Bremse lösen, Fahrstufe geben. Abfahrt ' + fmtClock(R.stops[0].dep) + ' – Ausfahrsignal beachten.', 'info');
+    audioInit();
+  }
+  function toast(t, k) { const d = document.createElement('div'); d.className = 'toast ' + (k || ''); d.textContent = t; $('toasts').appendChild(d); setTimeout(() => d.remove(), 5200); }
+  function syncButtons() { $('bCam').textContent = 'Kamera: ' + ['Cockpit', 'Außen', 'Strecke'][camMode]; $('bWx').textContent = 'Wetter: ' + S.WEATHER[wxKey].name; $('bTod').textContent = TODS[todIdx].n; $('bAuto').classList.toggle('on', auto); $('bFps').classList.toggle('on', showFps); }
+
+  /* ---------- Bedienelemente ---------- */
+  function slider(el, onValue, notches) {
+    let id = null; const thumb = el.querySelector('.thumb'), track = el.querySelector('.track');
+    const set = e => { const r = el.getBoundingClientRect(); let v = 1 - (e.clientY - r.top) / r.height; v = S.clamp(v, 0, 1); if (notches) v = Math.round(v * notches) / notches; onValue(v); };
+    el.addEventListener('pointerdown', e => { id = e.pointerId; el.setPointerCapture(id); auto = false; syncButtons(); set(e); e.preventDefault(); });
+    el.addEventListener('pointermove', e => { if (e.pointerId === id) set(e); });
+    const up = e => { if (e.pointerId === id) id = null; }; el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    return v => { const h = el.clientHeight; thumb.style.top = (1 - v) * h + 'px'; track.querySelector('.fill').style.height = v * 100 + '%'; };
+  }
+  const drawThr = slider($('thr'), v => { if (W) W.throttle = v; }, SPEC.notches), drawBrk = slider($('brk'), v => { if (W) W.brake = v; }, 0);
+  $('bHorn').addEventListener('pointerdown', () => { hornHeld = true; }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('bHorn').addEventListener(ev, () => { hornHeld = false; }));
+  const doorToggle = () => { if (!W) return; if (W.doors === 'closed' || W.doors === 'closing') { if (S.openDoors(W)) chime(); else toast(mode === 'career' ? 'Türen nur im Stand am Bahnsteig öffnen' : 'Türen nur im Stand öffnen', 'bad'); } else S.closeDoors(W); };
+  $('bDoor').addEventListener('click', doorToggle);
+  $('bRel').addEventListener('click', () => { if (W && !S.release(W)) toast('Quittieren erst im Stillstand möglich', 'bad'); });
+  $('bCam').addEventListener('click', () => { camMode = (camMode + 1) % 3; look = { yaw: 0, pitch: 0, idle: 0 }; trackside = null; syncButtons(); });
+  $('bWx').addEventListener('click', () => { wxKey = WX[(WX.indexOf(wxKey) + 1) % WX.length]; syncButtons(); });
+  $('bTod').addEventListener('click', () => { todIdx = (todIdx + 1) % TODS.length; syncButtons(); });
+  $('bAuto').addEventListener('click', () => { auto = !auto; ap = null; syncButtons(); });
+  $('bFps').addEventListener('click', () => { showFps = !showFps; $('fps').textContent = ''; syncButtons(); });
+  $('bPause').addEventListener('click', () => { running = false; $('menu').hidden = false; });
+  $('goCareer').addEventListener('click', () => start('career')); $('goFree').addEventListener('click', () => start('free')); $('goDemo').addEventListener('click', () => start('career', true));
+  $('rAgain').addEventListener('click', () => start(mode)); $('rMenu').addEventListener('click', () => { $('result').hidden = true; $('menu').hidden = false; running = false; });
+  $('bSw').addEventListener('click', () => toast('In dieser Demo ist nur die Hauptstrecke befahrbar (Weichen gibt es im Unity-Projekt).', 'info'));
+  window.addEventListener('keydown', e => { if (!W || !running) return; const k = e.key.toLowerCase(); auto = false;
+    if (k === 'w' || k === 'arrowup') W.throttle = Math.min(1, W.throttle + 1 / SPEC.notches); else if (k === 's' || k === 'arrowdown') W.throttle = Math.max(0, W.throttle - 1 / SPEC.notches);
+    else if (k === 'd' || k === 'arrowright') W.brake = Math.min(1, W.brake + .1); else if (k === 'a' || k === 'arrowleft') W.brake = Math.max(0, W.brake - .1);
+    else if (k === ' ') { W.brake = 1; e.preventDefault(); } else if (k === 'h') hornHeld = true; else if (k === 't') doorToggle(); else if (k === 'r') S.release(W); syncButtons(); });
+  window.addEventListener('keyup', e => { if (e.key.toLowerCase() === 'h') hornHeld = false; });
+
+  // Kamera: Ziehen und Zoomen auf der 3D-Flaeche
+  const pts = new Map(); let pinch = 0;
+  canvas.addEventListener('pointerdown', e => { pts.set(e.pointerId, [e.clientX, e.clientY]); canvas.setPointerCapture(e.pointerId); pinch = 0; });
+  canvas.addEventListener('pointermove', e => { const p = pts.get(e.pointerId); if (!p) return; const dx = e.clientX - p[0], dy = e.clientY - p[1]; p[0] = e.clientX; p[1] = e.clientY;
+    if (pts.size >= 2) { const a = [...pts.values()], d = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]); if (pinch) zoom((pinch - d) * .004); pinch = d; return; }
+    const k = Math.PI / Math.max(innerHeight, 1) * .9; look.idle = 0;
+    if (camMode === 0) { look.yaw = S.clamp(look.yaw - dx * k, -2, 2); look.pitch = S.clamp(look.pitch - dy * k, -.6, .9); } else if (camMode === 1) { orbit.yaw -= dx * k * 1.4; orbit.pitch = S.clamp(orbit.pitch + dy * k, -.05, 1.35); } });
+  const endPt = e => { pts.delete(e.pointerId); pinch = 0; }; canvas.addEventListener('pointerup', endPt); canvas.addEventListener('pointercancel', endPt);
+  const zoom = f => { if (camMode === 1) orbit.dist = S.clamp(orbit.dist * (1 + f), 10, 160); else if (camMode === 0) cam.fov = S.clamp(cam.fov * (1 + f * .5), 40, 85); };
+  canvas.addEventListener('wheel', e => { zoom(Math.sign(e.deltaY) * .08); e.preventDefault(); }, { passive: false });
+
+  /* ---------- Audio (synthetisch) ---------- */
+  let ac = null, A = null;
+  function audioInit() { if (ac) { ac.resume(); return; } try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    const master = ac.createGain(); master.gain.value = .7; master.connect(ac.destination);
+    const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const noise = () => { const s = ac.createBufferSource(); s.buffer = nb; s.loop = true; s.start(); return s; };
+    const roll = noise(), rf = ac.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 400; const rg = ac.createGain(); rg.gain.value = 0; roll.connect(rf).connect(rg).connect(master);
+    const wind = noise(), wf = ac.createBiquadFilter(); wf.type = 'highpass'; wf.frequency.value = 1200; const wg = ac.createGain(); wg.gain.value = 0; wind.connect(wf).connect(wg).connect(master);
+    const rn = noise(), rnf = ac.createBiquadFilter(); rnf.type = 'highpass'; rnf.frequency.value = 3000; const rng = ac.createGain(); rng.gain.value = 0; rn.connect(rnf).connect(rng).connect(master);
+    const mo = ac.createOscillator(); mo.type = 'sawtooth'; mo.frequency.value = 80; const mf = ac.createBiquadFilter(); mf.type = 'lowpass'; mf.frequency.value = 500; const mg = ac.createGain(); mg.gain.value = 0; mo.connect(mf).connect(mg).connect(master); mo.start();
+    const h1 = ac.createOscillator(), h2 = ac.createOscillator(); h1.type = h2.type = 'square'; h1.frequency.value = 370; h2.frequency.value = 494; const hg = ac.createGain(); hg.gain.value = 0; const hf = ac.createBiquadFilter(); hf.type = 'lowpass'; hf.frequency.value = 1800;
+    h1.connect(hf); h2.connect(hf); hf.connect(hg).connect(master); h1.start(); h2.start();
+    const al = ac.createOscillator(); al.type = 'sine'; al.frequency.value = 1000; const ag = ac.createGain(); ag.gain.value = 0; al.connect(ag).connect(master); al.start();
+    A = { master, rg, rf, wg, rng, mo, mg, mf, hg, ag, al }; }
+  function chime() { if (!ac) return; const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; g.gain.setValueAtTime(.18, ac.currentTime); g.gain.exponentialRampToValueAtTime(.001, ac.currentTime + 1); o.connect(g).connect(A.master); o.start(); o.stop(ac.currentTime + 1); }
+  function audioUpdate(t) { if (!A || !W) return; const v = W.v, vn = Math.min(1, v / 45), on = running ? 1 : 0, T = ac.currentTime;
+    A.rf.frequency.setTargetAtTime(250 + vn * 900, T, .1); A.rg.gain.setTargetAtTime((.02 + .5 * vn) * on * (camMode === 0 ? .7 : 1), T, .1);
+    A.wg.gain.setTargetAtTime(vn * vn * .07 * on, T, .1); A.rng.gain.setTargetAtTime(W.weather.rain * .06 * on, T, .3);
+    A.mo.frequency.setTargetAtTime(60 + v * 5, T, .1); A.mg.gain.setTargetAtTime((.008 + .06 * (W.throttle * (W.tractionCut ? 0 : 1))) * on, T, .1);
+    A.hg.gain.setTargetAtTime(hornHeld && on ? .16 : 0, T, hornHeld ? .03 : .08);
+    const alarm = W.safety.state === 'warn' || W.safety.eb; A.al.frequency.value = W.safety.eb ? 650 : 1000; A.ag.gain.setTargetAtTime(alarm && on && (t * (W.safety.eb ? 6 : 2.5)) % 1 < .6 ? .1 : 0, T, .01); }
+
+  /* ---------- HUD ---------- */
+  const gctx = $('gauge').getContext('2d');
+  function drawGauge(kmh) { const c = gctx, w = 220, cx = 110, cy = 110; c.clearRect(0, 0, w, w); c.fillStyle = '#0a0f14'; c.beginPath(); c.arc(cx, cy, 106, 0, 7); c.fill(); c.strokeStyle = '#8c98a3'; c.lineWidth = 4; c.stroke();
+    const a0 = Math.PI * .75, a1 = Math.PI * 2.25, vmax = 200; c.fillStyle = '#e8eef3'; c.strokeStyle = '#e8eef3'; c.font = '600 14px Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (let v = 0; v <= vmax; v += 10) { const a = a0 + (a1 - a0) * v / vmax, big = v % 20 === 0; c.lineWidth = big ? 3 : 1.5; c.beginPath(); c.moveTo(cx + Math.cos(a) * (big ? 80 : 86), cy + Math.sin(a) * (big ? 80 : 86)); c.lineTo(cx + Math.cos(a) * 94, cy + Math.sin(a) * 94); c.stroke(); if (big) c.fillText(v, cx + Math.cos(a) * 66, cy + Math.sin(a) * 66); }
+    const p = W ? S.ms2kmh(W.safety.permitted) : 0; c.strokeStyle = '#ffb81c'; c.lineWidth = 5; c.beginPath(); c.arc(cx, cy, 99, a0 + (a1 - a0) * Math.min(p, vmax) / vmax - .03, a0 + (a1 - a0) * Math.min(p, vmax) / vmax + .03); c.stroke();
+    const a = a0 + (a1 - a0) * Math.min(kmh, vmax) / vmax; c.strokeStyle = '#ff5a4d'; c.lineWidth = 4; c.beginPath(); c.moveTo(cx - Math.cos(a) * 14, cy - Math.sin(a) * 14); c.lineTo(cx + Math.cos(a) * 84, cy + Math.sin(a) * 84); c.stroke(); c.fillStyle = '#ccc'; c.beginPath(); c.arc(cx, cy, 7, 0, 7); c.fill(); }
+  function nextRestriction() { const l0 = S.limitAt(W.s);
+    for (let d = 10; d <= 3000 && W.s + d <= R.length; d += 10) { const s = W.s + d, l = S.limitAt(s);
+      for (const sg of W.signals) if (sg.s > s - 10 && sg.s <= s && sg.aspect === 'halt') return `Signal ${sg.name}: HALT in ${Math.round(sg.s - W.s)} m`;
+      if (Math.abs(l - l0) > .1) return `→ ${Math.round(S.ms2kmh(l))} km/h in ${Math.round(d)} m`; }
+    return W.s > R.length - 3000 ? `Gleisende in ${Math.round(R.length - W.s)} m` : 'Streckenhöchstgeschwindigkeit'; }
+  function service() { const sv = W.svc, st = R.stops[sv.i]; if (mode === 'free') return ['Freie Fahrt', W.v < .3 ? 'Stillstand' : '']; if (!st) return ['Fahrt beendet', ''];
+    if (sv.phase === 'platform') return ['Halt: ' + st.name + ' (Gl. ' + st.platform + ')', sv.ready ? '<span style="color:var(--good)">ABFAHRBEREIT</span> – Türen schließen' : !sv.boarded ? 'Türen öffnen – Fahrgastwechsel' : 'Abfahrt planmäßig ' + fmtClock(st.dep)];
+    const d = st.s - W.s, e = W.clock - st.arr; return ['Nächster Halt: ' + st.name + ' (Gl. ' + st.platform + ')', `Soll ${fmtClock(st.arr)} · noch ${nf(d / 1000)} km · ` + (e > 0 ? `<span style="color:#ff9966">überfällig ${Math.round(e)} s</span>` : `in ${Math.round(-e)} s`)]; }
+  let hudT = 0, fpsAcc = 0, fpsN = 0;
+  function hud(dt) {
+    const kmh = S.ms2kmh(W.v), perm = S.ms2kmh(W.safety.permitted);
+    $('spd').firstChild.nodeValue = Math.round(kmh); $('spd').classList.toggle('over', kmh > perm + 1);
+    $('perm').textContent = Math.min(999, Math.round(perm)); $('grade').textContent = nf(S.gradeAt(W.s)); $('next').textContent = nextRestriction();
+    $('clock').textContent = fmtClock(W.clock); const sv = service(); $('line1').textContent = sv[0]; $('line2').innerHTML = sv[1];
+    const hl = S.mainPipe(W.fill); $('hl').textContent = nf(hl); $('hlb').style.width = hl / 5 * 100 + '%'; $('bz').textContent = nf(3.8 * W.fill); $('bzb').style.width = W.fill * 100 + '%';
+    $('door').textContent = { closed: 'zu', opening: 'öffnet', open: 'offen', closing: 'schließt' }[W.doors]; $('doorb').style.width = W.doorP * 100 + '%'; $('bDoor').textContent = W.doors === 'closed' || W.doors === 'closing' ? 'Türen auf' : 'Türen zu';
+    drawThr(W.throttle); drawBrk(W.brake); drawGauge(kmh);
+    const al = $('alert'), sf = W.safety; al.hidden = !(sf.eb || sf.state === 'warn');
+    if (sf.eb) { al.className = 'alert eb'; al.textContent = 'ZWANGSBREMSUNG: ' + sf.reason + (sf.canRelease ? ' – Quittieren möglich' : ' – bis Stillstand warten'); } else if (sf.state === 'warn') { al.className = 'alert warn'; al.textContent = `ÜBERWACHUNG – zulässig ${Math.round(perm)} km/h, Geschwindigkeit verringern`; }
+    $('bRel').hidden = !sf.eb; $('bRel').disabled = !sf.canRelease;
+    $('sw').hidden = true;
+    if (mode === 'career' && W.tractionCut && W.throttle > .01 && !sf.eb) $('line2').innerHTML += ' · <span style="color:var(--amber)">Fahrsperre: ' + (W.doors !== 'closed' ? 'Türen schließen' : 'Bremse lösen') + '</span>';
+    let e; while ((e = W.svc.events.shift())) { toast(e.text, e.kind === 'ok' ? 'ok' : e.kind === 'bad' || e.kind === 'eb' ? 'bad' : ''); if (e.kind === 'ok') chime(); }
+    fpsAcc += dt; fpsN++; if (showFps && fpsAcc > .5) { $('fps').textContent = Math.round(fpsN / fpsAcc) + ' FPS · ' + renderer.info.render.calls + ' Draw Calls'; fpsAcc = 0; fpsN = 0; }
+    if (W.svc.done && mode === 'career' && running) finish();
+  }
+  function finish() { running = false; const sc2 = S.score(W);
+    $('rStars').textContent = '★'.repeat(sc2.stars) + '☆'.repeat(3 - sc2.stars); $('rTitle').textContent = sc2.pass ? 'Fahrt abgeschlossen' : 'Nicht bestanden';
+    const bar = (n, v) => `<div class="line"><span>${n}</span><span class="meter"><i style="width:${v}%;background:${v >= 80 ? '#4fd18b' : v >= 55 ? '#ffb81c' : '#ff5a4d'}"></i></span><b>${Math.round(v)}</b></div>`;
+    $('rBars').innerHTML = bar('Pünktlichkeit', sc2.P) + bar('Haltegenauigkeit', sc2.A) + bar('Fahrkomfort', sc2.C) + bar('Sicherheit', sc2.S) + `<div class="line"><b>Gesamt</b><span></span><b>${Math.round(sc2.total)}</b></div>`;
+    $('rStops').innerHTML = W.svc.results.map(r => r.missed ? `${r.name}: Halt verpasst` : `${r.name}: ${r.delay >= 0 ? '+' : ''}${Math.round(r.delay)} s · Halteabweichung ${nf(r.err)} m`).join('<br>') + `<br>Zwangsbremsungen: ${W.safety.interventions} · Haltsignal überfahren: ${W.safety.spad}`;
+    $('result').hidden = false; }
+
+  /* ---------- Rendering ---------- */
+  const skyDay = new THREE.Color(0x8fb8e8), skyGrey = new THREE.Color(0x8a9097), skyNight = new THREE.Color(0x05080f), tmpC = new THREE.Color();
+  function environment(t, dt) {
+    const wx = W ? W.weather : S.WEATHER.clear, h = TODS[todIdx].h, elev = 55 * Math.sin((h - 6) / 12 * Math.PI), day = S.clamp((elev + 6) / 16, 0, 1), dd = day * day * (3 - 2 * day);
+    const cl = wx.cloud, vis = S.visibility(wx);
+    tmpC.copy(skyDay).lerp(skyGrey, Math.max(cl * .8, wx.fog)).multiplyScalar(.15 + .85 * dd).lerp(skyNight, 1 - dd);
+    scene.background = tmpC.clone(); scene.fog.color.copy(tmpC); scene.fog.density = 2.6 / Math.max(vis, 60);
+    hemi.intensity = .18 + .75 * dd * (1 - .35 * cl); sun.intensity = 1.25 * dd * (1 - .7 * cl);
+    const a = Math.max(elev, 3) * Math.PI / 180; sun.position.set(Math.cos(a) * 200, Math.sin(a) * 200, -60).add(cam.position); sun.target.position.copy(cam.position);
+    sun.color.setHex(elev < 15 ? 0xffb070 : 0xfff2dd);
+    const night = dd < .45 || vis < 2500 || wx.rain > .5; headLight.intensity = night ? 3 : 0;
+    // Regen
+    const cnt = Math.floor(RAIN_N * Math.min(1, wx.rain * 1.3)); rainGeo.setDrawRange(0, cnt * 2); rain.visible = cnt > 0;
+    if (cnt > 0) { const cx = cam.position.x, cy = cam.position.y, cz = cam.position.z, Lx = 60, Ly = 24, Lz = 60, wrap = (b, c, L) => c + ((((b - c + L / 2) % L) + L) % L) - L / 2;
+      for (let i = 0; i < cnt; i++) { const o = rainOff[i], x = wrap(o[0], cx, Lx), y = wrap(o[1] - t * 26, cy, Ly), z = wrap(o[2], cz, Lz); rainPos.set([x, y, z, x, y + .9, z], i * 6); }
+      rainGeo.attributes.position.needsUpdate = true; }
+  }
+  function placeTrain() {
+    cars.forEach((c, i) => { const mid = W.s - CAR * (i + .5), a = poseAt(mid + 9), b = poseAt(mid - 9), pa = sc(a, 0, 0), pb = sc(b, 0, 0); c.g.position.copy(pa).add(pb).multiplyScalar(.5); c.g.lookAt(pa); });
+    cars[0].shell.visible = camMode !== 0;
+  }
+  function placeCamera(dt) {
+    const hq = poseAt(W.s);
+    if (camMode === 0) { look.idle += dt; if (look.idle > 4) { look.yaw *= Math.exp(-1.2 * dt); look.pitch *= Math.exp(-.6 * dt); }
+      const eye = sc(poseAt(W.s - 3.4), -.3, 2.75), d = dirAt(hq), yaw = Math.atan2(d.x, d.z) + look.yaw, pit = Math.asin(d.y) - .1 + look.pitch;
+      cam.position.copy(eye); cam.lookAt(eye.clone().add(new THREE.Vector3(Math.sin(yaw) * Math.cos(pit), Math.sin(pit), Math.cos(yaw) * Math.cos(pit))));
+    } else if (camMode === 1) { const tg = sc(poseAt(W.s - 50), 0, 2), d = dirAt(hq), a = Math.atan2(d.x, d.z) + orbit.yaw, cp = Math.cos(orbit.pitch);
+      cam.position.copy(tg).add(new THREE.Vector3(Math.sin(a) * cp, Math.sin(orbit.pitch), Math.cos(a) * cp).multiplyScalar(orbit.dist)); cam.lookAt(tg); cam.fov += (50 - cam.fov) * Math.min(1, dt * 4);
+    } else { const head = sc(hq, 0, 1.8); if (!trackside || head.distanceTo(trackside) > 320 || sc(hq, 0, 0).clone().sub(trackside).dot(dirAt(hq)) > 45) trackside = sc(poseAt(Math.min(W.s + 260, R.length)), 9, 2.6);
+      cam.position.copy(trackside); cam.lookAt(head); const dist = trackside.distanceTo(head); cam.fov += (S.clamp(2 * Math.atan(7 / Math.max(dist, 8)) * 57.3, 18, 60) - cam.fov) * Math.min(1, dt * 6); }
+    cam.updateProjectionMatrix();
+  }
+  function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+  addEventListener('resize', resize); resize();
+
+  // Menue-Hintergrund: Autopilot-Zug
+  W = S.create({ free: true }); const apIdle = { thr: 0, brk: 0 }; let menuAp = apIdle; camMode = 1; orbit.yaw = .6;
+  let last = performance.now();
+  function frame(now) {
+    requestAnimationFrame(frame); const dt = Math.min(.05, (now - last) / 1000); last = now; const t = now / 1000;
+    if (!running && $('hud').hidden) { // Menuehintergrund
+      menuAp = S.autopilot(W, dt, menuAp); S.update(W, dt, S.WEATHER.clear); orbit.yaw += dt * .06; if (W.s > R.length - 40 && W.v < .1) { W = S.create({ free: true }); menuAp = { thr: 0, brk: 0 }; }
+    } else if (running) {
+      if (auto) ap = S.autopilot(W, dt, ap);
+      if (mode === 'free' || true) { if (!auto) { /* Fahrerbefehl bleibt */ } }
+      S.update(W, dt, S.WEATHER[wxKey]); hud(dt);
+    }
+    placeTrain(); placeCamera(dt); environment(t, dt);
+    for (let i = 0; i < sigViews.length; i++) { const h = W.signals[i].aspect === 'halt'; sigViews[i].red.material.color.setHex(h ? 0xff2a1a : 0x300000); sigViews[i].grn.material.color.setHex(h ? 0x002a08 : 0x20ff50); }
+    audioUpdate(t); renderer.render(scene, cam);
+  }
+  requestAnimationFrame(frame);
+  window.__zug = { S, get W() { return W; } };
+})();
+
+</script>
+</body></html>
