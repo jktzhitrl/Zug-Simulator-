@@ -89,7 +89,7 @@ h1 em { font-style: normal; color: var(--amber); }
 @keyframes wipe { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(-150deg); } }
 @media (prefers-reduced-motion: reduce) { .cab .wiper.on { animation: none; } }
 .sigbox { display: flex; gap: 10px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; line-height: 1.35; max-width: 260px; }
-.sigbox canvas { width: 44px; height: 96px; flex: none; }
+.sigbox canvas { width: 52px; height: 110px; flex: none; }
 @media (max-width: 760px) { .sigbox { font-size: 11px; max-width: 200px; } }
 </style>
 
@@ -100,7 +100,7 @@ h1 em { font-style: normal; color: var(--amber); }
   <div class="tl panel"><div class="speed" id="spd">0<small>km/h</small></div>
     <div class="kv">zulässig <b id="perm">160</b> km/h · Neigung <b id="grade">0,0</b> ‰</div>
     <div class="kv" id="next">–</div>
-    <div class="sigbox" id="sigbox" hidden><canvas id="sigc" width="44" height="96"></canvas><div id="sigt"></div></div></div>
+    <div class="sigbox" id="sigbox" hidden><canvas id="sigc" width="52" height="110"></canvas><div id="sigt"></div></div></div>
   <div class="tc panel"><div class="clock" id="clock">08:00:00</div><div class="stopline" id="line1"></div><div class="sub" id="line2"></div></div>
   <div class="tr">
     <button id="bCam">Kamera: Cockpit</button><button id="bPause">Menü</button>
@@ -133,7 +133,7 @@ h1 em { font-style: normal; color: var(--amber); }
       <div><b>Fahren</b> linken Hebel ziehen (8 Stufen)</div><div><b>Bremse</b> rechten Hebel; ganz oben = Schnellbremse</div>
       <div><b>Tasten</b> W/S Fahren · A/D Bremse · Leertaste Schnellbremse · H Horn · T Türen · R quittieren</div>
       <div><b>Kamera</b> Ziehen = umschauen/orbit, Mausrad/Pinch = Zoom</div>
-      <div><b>Weichen</b> Panel links oder Taste X; Gleiswechsel nur bei Signal „Fahrt mit Langsamfahrt“ (60 km/h)</div><div><b>Signale</b> Hp 0 rot = Halt · Ks 1 grün = Fahrt · Ks 1 blinkend = Beschränkung erwarten · Ks 2 gelb = Halt erwarten · Zs 3 = erlaubte km/h ÷ 10</div><div><b>Halt</b> Türen nur im Stand am Bahnsteig; erst nach Abfahrzeit losfahren</div>
+      <div><b>Weichen</b> Panel links oder Taste X; Gleiswechsel nur bei Signal „Fahrt mit Langsamfahrt“ (60 km/h)</div><div><b>Signale</b> Hp 0 rot = Halt · Ks 1 grün = Fahrt · Ks 1 blinkend + Zs 3v (gelbe Ziffer) = Geschwindigkeit herabsetzen · Ks 2 gelb = Halt erwarten · Zs 3 (weiße Ziffer über dem Signal) = erlaubte km/h ÷ 10</div><div><b>Halt</b> Türen nur im Stand am Bahnsteig; erst nach Abfahrzeit losfahren</div>
       <div><b>Zugsicherung</b> Überschreitest du die Bremskurve, warnt das System und bremst zwangsweise</div>
     </div>
   </div>
@@ -292,6 +292,7 @@ const SIM = (() => {
     for (let i = list.length - 1; i >= 0; i--) {
       const sg = list[i], nx = list[i + 1];
       if (sg.hp0) sg.ks = 'hp0'; else { const nHp0 = nx ? nx.hp0 : sg.kind === 'term'; sg.ks = nHp0 ? 'ks2' : (nx && nx.zs ? 'ks1b' : 'ks1'); }
+      sg.zsv = sg.ks === 'ks1b' && nx ? nx.zs : 0;
       sg.aspect = sg.hp0 ? 'halt' : sg.zs ? 'slow' : 'go';
     }
     w.oppSig = w.res && w.res.who === 'opp' ? 'go' : 'halt';
@@ -608,20 +609,28 @@ const SIM = (() => {
 
   // Signale
   const haloTex = glowTex;
-  const zsTex = tex(64, 64, (g, w, h) => { g.fillStyle = '#050505'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = '700 46px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('6', w / 2, h / 2 + 2); });
+  /* Ks-Signal (DB): Mehrabschnittssignal = Rot oben mittig, Gruen links, Gelb rechts; Zs 3 (weiss) ueber, Zs 3v (gelb) unter dem Schirm;
+     Mastschild weiss-rot-weiss, beim Mehrabschnittssignal zusaetzlich gelbes Dreieck (Spitze unten). Einfahrsignal fuer Stumpfgleis: ohne Gruen. */
+  const digitTex = () => { const c = document.createElement('canvas'); c.width = 64; c.height = 64; const t = new THREE.CanvasTexture(c); return { c, t, last: '' }; };
+  const drawDigit = (d, txt, col) => { const k = txt + col; if (d.last === k) return; d.last = k; const g = d.c.getContext('2d'); g.fillStyle = '#050505'; g.fillRect(0, 0, 64, 64); g.fillStyle = col; g.font = '700 48px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, 32, 35); d.t.needsUpdate = true; };
+  const stripeTex = tex(64, 96, (g, w, h) => { g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h); g.fillStyle = '#c8201a'; g.fillRect(0, h * .3, w, h * .4); g.strokeStyle = '#222'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4); });
+  const triTex = tex(64, 56, (g, w, h) => { g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h); g.fillStyle = '#ffd21c'; g.strokeStyle = '#111'; g.lineWidth = 4; g.beginPath(); g.moveTo(8, 8); g.lineTo(w - 8, 8); g.lineTo(w / 2, h - 6); g.closePath(); g.fill(); g.stroke(); });
   const plateTex = txt => tex(128, 80, (g, w, h) => { g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h); g.strokeStyle = '#111'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6); g.fillStyle = '#111'; g.font = '700 44px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(txt, w / 2, h / 2 + 2); });
-  function makeSignal(s, off, face, tag) { const q = poseAt(s), g = new THREE.Group(); g.position.copy(sc(q, off, 0)); g.rotation.y = -q.h + (face ? 0 : Math.PI);
-    mk(.2, 6.2, .2, SM(0x3a3d42, .6, .4), 0, 3.1, 0, g); mk(.8, 2.0, .3, L(0x0c0c0c), 0, 5.35, 0, g); mk(.62, .06, .5, L(0x0c0c0c), 0, 6.42, .12, g);
-    const hood = (y) => mk(.6, .05, .3, L(0x050505), 0, y, .22, g, false);
-    const sph = c => new THREE.Mesh(new THREE.SphereGeometry(.22, 14, 10), new THREE.MeshBasicMaterial({ color: c })), grn = sph(0x002a08), yel = sph(0x2a2000), red = sph(0x300000);
-    grn.position.set(0, 5.95, .17); yel.position.set(0, 5.35, .17); red.position.set(0, 4.75, .17); g.add(grn, yel, red); hood(6.2); hood(5.6); hood(5.0);
-    const halo = (c, p) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); sp.scale.set(2.6, 2.6, 1); sp.position.copy(p); sp.position.z += .1; g.add(sp); return sp; };
+  function makeSignal(s, off, face, tag, stub) { const q = poseAt(s), g = new THREE.Group(); g.position.copy(sc(q, off, 0)); g.rotation.y = -q.h + (face ? 0 : Math.PI);
+    mk(.2, 6.0, .2, SM(0x3a3d42, .6, .4), 0, 3.0, 0, g); mk(1.0, 1.3, .3, L(0x0c0c0c), 0, 5.55, 0, g);
+    const sph = c => new THREE.Mesh(new THREE.SphereGeometry(.2, 14, 10), new THREE.MeshBasicMaterial({ color: c })), red = sph(0x300000), yel = sph(0x2a2000), grn = sph(0x002a08);
+    red.position.set(0, 5.95, .17); if (stub) { yel.position.set(0, 5.35, .17); grn.visible = false; grn.position.set(0, 5.35, .17); } else { grn.position.set(-.3, 5.3, .17); yel.position.set(.3, 5.3, .17); }
+    g.add(red, yel, grn);
+    for (const p of [red.position, yel.position, grn.position]) mk(.34, .05, .2, L(0x050505), p.x, p.y + .24, .22, g, false);
+    const halo = (c, p) => { const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, color: c, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); sp.scale.set(2.4, 2.4, 1); sp.position.copy(p); sp.position.z += .1; g.add(sp); return sp; };
     const rh = halo(0xff2a1a, red.position), yh = halo(0xffc020, yel.position), gh = halo(0x30ff60, grn.position);
-    const zbox = new THREE.Group(); zbox.position.set(0, 7.05, .05); mk(.84, .84, .22, L(0x0a0a0a), 0, 0, 0, zbox, false); const zp = new THREE.Mesh(new THREE.PlaneGeometry(.66, .66), new THREE.MeshBasicMaterial({ map: zsTex })); zp.position.z = .12; zbox.add(zp); mk(.1, .5, .1, L(0x333333), 0, -.6, 0, zbox, false); g.add(zbox); zbox.visible = false;
-    const plate = new THREE.Mesh(new THREE.PlaneGeometry(.62, .4), new THREE.MeshBasicMaterial({ map: plateTex(tag || ''), side: THREE.DoubleSide })); plate.position.set(0, 3.2, .12); g.add(plate);
-    scene.add(g); return { red, yel, grn, rh, yh, gh, zbox }; }
-  const sigViews = R.signals.map(sg => makeSignal(sg.s, sg.off, false, sg.tag));
-  const oppSigView = makeSignal(R.opp.sig, -TRK - 3.3, true, 'N1');
+    const box = (y, d) => { const grp = new THREE.Group(); grp.position.set(0, y, .05); mk(.76, .76, .2, L(0x0a0a0a), 0, 0, 0, grp, false); const p = new THREE.Mesh(new THREE.PlaneGeometry(.6, .6), new THREE.MeshBasicMaterial({ map: d.t })); p.position.z = .11; grp.add(p); g.add(grp); grp.visible = false; return grp; };
+    const zd = digitTex(), zvd = digitTex(), zbox = box(6.85, zd), zvbox = box(4.55, zvd); mk(.1, .5, .1, L(0x333333), 0, 6.5, 0, g, false);
+    const pl = (map, w, h, y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map, side: THREE.DoubleSide })); m.position.set(0, y, .12); g.add(m); return m; };
+    pl(stripeTex, .5, .75, 2.8); pl(triTex, .5, .44, 3.5); pl(plateTex(tag || ''), .62, .4, 2.15);
+    scene.add(g); return { red, yel, grn, rh, yh, gh, zbox, zvbox, zd, zvd }; }
+  const sigViews = R.signals.map(sg => makeSignal(sg.s, sg.off, false, sg.tag, sg.kind === 'term'));
+  const oppSigView = makeSignal(R.opp.sig, -TRK - 3.3, true, 'N1', false);
 
   // Baustelle auf Gleis 2
   const bauG = new THREE.Group(), bauLamps = []; scene.add(bauG);
@@ -800,15 +809,18 @@ void main(){ vec3 d=normalize(vDir); float y=d.y; vec3 col=mix(uHor,uZen,pow(cla
   function service() { const sv = W.svc, st = R.stops[sv.i]; if (mode === 'free') return ['Freie Fahrt', W.v < .3 ? 'Stillstand' : '']; if (!st) return ['Fahrt beendet', ''];
     if (sv.phase === 'platform') return ['Halt: ' + st.name + ' (Gl. ' + st.platform + ')', sv.ready ? '<span style="color:var(--good)">ABFAHRBEREIT</span> – Türen schließen' : !sv.boarded ? 'Türen öffnen – Fahrgastwechsel' : 'Abfahrt planmäßig ' + fmtClock(st.dep)];
     const d = st.s - W.s, e = W.clock - st.arr; return ['Nächster Halt: ' + st.name + ' (Gl. ' + st.platform + ')', `Soll ${fmtClock(st.arr)} · noch ${nf(d / 1000)} km · ` + (e > 0 ? `<span style="color:#ff9966">überfällig ${Math.round(e)} s</span>` : `in ${Math.round(-e)} s`)]; }
-  const KS = { hp0: 'Hp 0 – Halt', ks1: 'Ks 1 – Fahrt', ks1b: 'Ks 1 blinkend – Geschwindigkeitsbeschränkung erwarten', ks2: 'Ks 2 – Halt erwarten' };
+  const KS = { hp0: 'Hp 0 – Halt', ks1: 'Ks 1 – Fahrt', ks1b: 'Ks 1 blinkend (Zs 3v) – Geschwindigkeit herabsetzen', ks2: 'Ks 2 – Halt erwarten' };
   const sc3 = $('sigc').getContext('2d');
   function drawSigBox() { const sg = W.signals.find(x => x.s > W.s - 2), box = $('sigbox'); if (!sg || sg.s - W.s > 3000) { box.hidden = true; return; } box.hidden = false;
-    const c = sc3, ks = sg.ks, t = performance.now() / 1000, bl = ks === 'ks1b' ? Math.floor(t * 2) % 2 === 0 : true; c.clearRect(0, 0, 44, 96);
-    c.fillStyle = '#05080b'; c.strokeStyle = '#5a6672'; c.lineWidth = 2; c.beginPath(); c.roundRect(6, 22, 32, 72, 6); c.fill(); c.stroke();
-    const lamp = (y, on, col, off) => { c.fillStyle = on ? col : off; c.beginPath(); c.arc(22, y, 8, 0, 7); c.fill(); if (on) { c.globalAlpha = .35; c.beginPath(); c.arc(22, y, 13, 0, 7); c.fill(); c.globalAlpha = 1; } };
-    lamp(38, (ks === 'ks1' || ks === 'ks1b') && bl, '#2cff6a', '#06210f'); lamp(58, ks === 'ks2', '#ffc61e', '#241c05'); lamp(78, ks === 'hp0', '#ff3322', '#2a0905');
-    if (sg.zs) { c.fillStyle = '#000'; c.strokeStyle = '#5a6672'; c.fillRect(10, 0, 24, 20); c.strokeRect(10, 0, 24, 20); c.fillStyle = '#fff'; c.font = '700 16px Arial'; c.textAlign = 'center'; c.fillText(String(sg.zs / 10), 22, 16); }
-    $('sigt').innerHTML = `<b>${sg.name}</b><br>${KS[ks]}${sg.zs ? ' · Zs 3: ' + sg.zs + ' km/h' : ''}<br><span style="color:var(--muted)">in ${Math.max(0, Math.round(sg.s - W.s))} m${sg.why && ks === 'hp0' ? ' · ' + sg.why : ''}</span>`; }
+    const c = sc3, ks = sg.ks, stub = sg.kind === 'term', t = performance.now() / 1000, bl = ks === 'ks1b' ? Math.floor(t * 1.7) % 2 === 0 : true; c.clearRect(0, 0, 52, 110);
+    const dig = (y, txt, col) => { c.fillStyle = '#000'; c.strokeStyle = '#5a6672'; c.lineWidth = 1.5; c.fillRect(14, y, 24, 20); c.strokeRect(14, y, 24, 20); c.fillStyle = col; c.font = '700 16px Arial'; c.textAlign = 'center'; c.fillText(txt, 26, y + 16); };
+    c.fillStyle = '#05080b'; c.strokeStyle = '#5a6672'; c.lineWidth = 2; c.beginPath(); c.roundRect(4, 24, 44, 52, 6); c.fill(); c.stroke();
+    const lamp = (x, y, on, col, off) => { c.fillStyle = on ? col : off; c.beginPath(); c.arc(x, y, 8, 0, 7); c.fill(); if (on) { c.globalAlpha = .35; c.beginPath(); c.arc(x, y, 13, 0, 7); c.fill(); c.globalAlpha = 1; } };
+    lamp(26, 38, ks === 'hp0', '#ff3322', '#2a0905');
+    if (stub) lamp(26, 62, ks === 'ks2', '#ffc61e', '#241c05'); else { lamp(15, 62, (ks === 'ks1' || ks === 'ks1b') && bl, '#2cff6a', '#06210f'); lamp(37, 62, ks === 'ks2', '#ffc61e', '#241c05'); }
+    if (sg.zs) dig(0, String(sg.zs / 10), '#fff'); if (sg.zsv) dig(78, String(sg.zsv / 10), '#ffcf1a');
+    c.fillStyle = '#f4f4f0'; c.fillRect(20, 98, 12, 4); c.fillStyle = '#c8201a'; c.fillRect(20, 101, 12, 5); c.fillStyle = '#f4f4f0'; c.fillRect(20, 105, 12, 4);
+    $('sigt').innerHTML = `<b>${sg.name}</b><br>${KS[ks]}${sg.zs ? ' · Zs 3: ' + sg.zs + ' km/h' : ''}${sg.zsv ? ' · Zs 3v: ' + sg.zsv + ' km/h erwarten' : ''}<br><span style="color:var(--muted)">in ${Math.max(0, Math.round(sg.s - W.s))} m${sg.why && ks === 'hp0' ? ' · ' + sg.why : ''}</span>`; }
   let hudT = 0, fpsAcc = 0, fpsN = 0;
   function hud(dt) {
     const kmh = S.ms2kmh(W.v), perm = S.ms2kmh(W.safety.permitted);
@@ -903,11 +915,11 @@ void main(){ vec3 d=normalize(vDir); float y=d.y; vec3 col=mix(uHor,uZen,pow(cla
       S.update(W, dt, S.WEATHER[wxKey]); hud(dt);
     }
     placeTrain(); placeCamera(dt); environment(t, dt);
-    const setSig = (v, ks, zs, t) => { const h = ks === 'hp0', y = ks === 'ks2', gr = ks === 'ks1' || ks === 'ks1b', bl = ks === 'ks1b' ? Math.floor(t * 2) % 2 === 0 : true;
+    const setSig = (v, sg, t) => { const ks = sg.ks, h = ks === 'hp0', y = ks === 'ks2', gr = ks === 'ks1' || ks === 'ks1b', bl = ks === 'ks1b' ? Math.floor(t * 1.7) % 2 === 0 : true;
       v.red.material.color.setHex(h ? 0xff2a1a : 0x300000); v.yel.material.color.setHex(y ? 0xffc020 : 0x2a2000); v.grn.material.color.setHex(gr && bl ? 0x20ff50 : 0x002a08);
-      v.rh.visible = h; v.yh.visible = y; v.gh.visible = gr && bl; v.zbox.visible = !!zs; };
-    for (let i = 0; i < sigViews.length; i++) setSig(sigViews[i], W.signals[i].ks, W.signals[i].zs, t); setSig(oppSigView, W.oppSig === 'halt' ? 'hp0' : 'ks1', 0, t);
-    for (let i = 0; i < sigViews.length; i++) setSig(sigViews[i], W.signals[i].aspect); setSig(oppSigView, W.oppSig);
+      v.rh.visible = h; v.yh.visible = y; v.gh.visible = gr && bl && v.grn.visible;
+      v.zbox.visible = !!sg.zs; if (sg.zs) drawDigit(v.zd, String(sg.zs / 10), '#ffffff'); v.zvbox.visible = !!sg.zsv; if (sg.zsv) drawDigit(v.zvd, String(sg.zsv / 10), '#ffcf1a'); };
+    for (let i = 0; i < sigViews.length; i++) setSig(sigViews[i], W.signals[i], t); setSig(oppSigView, { ks: W.oppSig === 'halt' ? 'hp0' : 'ks1', zs: 0, zsv: 0 }, t);
     bauG.visible = !!W.construction; bauLamps.forEach((l, i) => { const on = Math.floor(t * 2 + i) % 2 === 0; l.visible = on; l.userData.glow.visible = on; });
     $('wiper').className = 'wiper' + (W && W.weather.rain > .25 && camMode === 0 ? ' on' : ''); audioUpdate(t); renderer.render(scene, cam);
   }
