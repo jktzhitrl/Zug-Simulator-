@@ -68,4 +68,4 @@ Weiterführend: [Architektur & Physik](docs/ARCHITECTURE.md) · [Build-Anleitung
 
 ## Browser-Demo
 
-`web/index.html` ist eine einzelne, eigenständige Seite (three.js von cdnjs, JS-Portierung der Simulation: Fahrphysik, Druckluftbremse, Signale, Zugsicherung, Fahrplan, Wetter, Tag/Nacht). Einfach im Browser öffnen. Vereinfacht: ein Gleis ohne Weichen/Sifa, Platzhaltergrafik.
+`web/index.html` ist eine einzelne, eigenständige Seite (three.js von cdnjs, JS-Portierung der Simulation: Fahrphysik, Druckluftbremse, Signale, Zugsicherung, Fahrplan, Wetter, Tag/Nacht). Einfach im Browser öffnen. Zweigleisige Strecke mit Weichen (Gleiswechsel), Signalen mit Fahrstraßenlogik, Gegenzügen und einer Baustelle auf Gleis 2. Vereinfacht: keine Sifa, Platzhaltergrafik.
