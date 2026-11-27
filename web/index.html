@@ -888,7 +888,7 @@ void main(){ vec3 d=normalize(vDir); float y=d.y; vec3 col=mix(uHor,uZen,pow(cla
     g.strokeStyle = '#eef2f5'; g.fillStyle = '#eef2f5'; g.font = '600 14px Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
     for (let v = 0; v <= vm; v += .5) { const a = ang(v), big = Number.isInteger(v); g.lineWidth = big ? 2.5 : 1; g.beginPath(); g.moveTo(110 + Math.cos(a) * (big ? 80 : 86), 110 + Math.sin(a) * (big ? 80 : 86)); g.lineTo(110 + Math.cos(a) * 94, 110 + Math.sin(a) * 94); g.stroke(); if (big) g.fillText(v, 110 + Math.cos(a) * 68, 110 + Math.sin(a) * 68); }
     g.fillStyle = '#ff3b2f'; { const a = ang(5); g.beginPath(); g.arc(110 + Math.cos(a) * 99, 110 + Math.sin(a) * 99, 4, 0, 7); g.fill(); }
-    g.fillStyle = '#cfd6dc'; g.font = '600 12px Arial'; g.fillText('Hauptluftleitung bar', 110, 134); bzBox(g, bz, 176);
+    g.fillStyle = '#cfd6dc'; g.font = '600 12px Arial'; g.fillText('HL / HB  bar', 110, 134); bzBox(g, bz, 176);
     needle(g, ang(hb), 84, '#dfe5ea', 3.2); needle(g, ang(hl), 90, '#d8b04a', 4.6); g.fillStyle = '#c9a24a'; g.beginPath(); g.arc(110, 110, 7, 0, 7); g.fill(); }
   function mfaUpdate(t) { const p = W.pzb, rs = (p.m1000.on && p.m1000.restr) || (p.m500.on && p.m500.restr), ph = Math.floor(t * 2) % 2 === 0, zl = { O: 'l85', M: 'l70', U: 'l55' }[p.zugart];
     for (const id of ['l55', 'l70', 'l85']) $(id).classList.toggle('on', rs ? (id === 'l85' ? ph : id === 'l70' ? !ph : false) : id === zl);
